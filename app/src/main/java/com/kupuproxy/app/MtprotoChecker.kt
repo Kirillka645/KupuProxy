@@ -63,32 +63,22 @@ object MtprotoChecker {
         connectTimeoutMs: Int,
         responseTimeoutMs: Int
     ): CheckResult {
-        val modes: List<Mode> = if (secret.isFakeTls) {
-            listOf(Mode.FAKETLS)
-        } else {
-            listOf(Mode.SECURE, Mode.ABRIDGED, Mode.INTERMEDIATE)
-        }
-        val dcs = intArrayOf(2, 1, 3)
-
-        var lastError = "unavailable"
+        // Fast path: 1 DC + 1 mode (как mtproxychecker --fast)
+        // Раньше 3 DC × 3 mode = до 9 таймаутов на мёртвый прокси.
+        val mode = if (secret.isFakeTls) Mode.FAKETLS else Mode.SECURE
+        val dcId = 2
         val started = System.currentTimeMillis()
 
-        for (dc in dcs) {
-            for (mode in modes) {
-                try {
-                    val rtt = checkOnce(
-                        host, port, secret, mode, dc,
-                        connectTimeoutMs, responseTimeoutMs
-                    )
-                    return CheckResult(true, rtt)
-                } catch (e: Exception) {
-                    lastError = e.message ?: e.javaClass.simpleName
-                }
-            }
+        return try {
+            val rtt = checkOnce(
+                host, port, secret, mode, dcId,
+                connectTimeoutMs, responseTimeoutMs
+            )
+            CheckResult(true, rtt)
+        } catch (e: Exception) {
+            val elapsed = (System.currentTimeMillis() - started).toInt()
+            CheckResult(false, elapsed.coerceAtLeast(-1), e.message ?: "unavailable")
         }
-
-        val elapsed = (System.currentTimeMillis() - started).toInt()
-        return CheckResult(false, elapsed.coerceAtLeast(-1), lastError)
     }
 
     private fun checkOnce(
@@ -104,8 +94,10 @@ object MtprotoChecker {
         val socket = Socket()
         try {
             socket.tcpNoDelay = true
-            socket.connect(InetSocketAddress(host, port), connectTimeoutMs)
-            socket.soTimeout = responseTimeoutMs
+            // Короткий TCP: если порт мёртв — сразу out
+            val tcpTimeout = connectTimeoutMs.coerceIn(600, 2500)
+            socket.connect(InetSocketAddress(host, port), tcpTimeout)
+            socket.soTimeout = responseTimeoutMs.coerceIn(800, 3500)
 
             val transport: Transport = if (mode == Mode.FAKETLS) {
                 FakeTlsTransport(socket, secret.raw, secret.domain).also { it.handshake() }

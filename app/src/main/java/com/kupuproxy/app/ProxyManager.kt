@@ -14,7 +14,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -301,9 +303,9 @@ object ProxyManager {
     }
 
     /**
-     * Полная проверка «как Telegram»:
-     * MTProxy obfuscated2 + req_pq_multi → resPQ.
-     * В список попадают только [ProxyStatus.AVAILABLE].
+     * Полная проверка «как Telegram» (fast):
+     * 1 attempt (DC2 + secure/faketls), высокий параллелизм, early-stop.
+     * В список — только [ProxyStatus.AVAILABLE].
      */
     suspend fun checkProxiesPingParallel(
         proxies: List<String>,
@@ -316,20 +318,46 @@ object ProxyManager {
         val total = proxies.size
         var processed = 0
         var working = 0
+        var stop = false
 
-        // MTProto-check тяжелее TCP — меньше параллелизма
-        val batch = settings.batchSize.coerceIn(8, 24)
-        val connectMs = settings.connectTimeoutMs.coerceAtLeast(2500)
-        val responseMs = settings.connectTimeoutMs.coerceAtLeast(3000)
+        val concurrency = settings.batchSize.coerceIn(16, 64)
+        val connectMs = settings.connectTimeoutMs.coerceIn(800, 2500)
+        val responseMs = (settings.connectTimeoutMs + 800).coerceIn(1200, 3500)
+        val stopAt = settings.stopWhenFound
+        val semaphore = Semaphore(concurrency)
 
-        proxies.chunked(batch).forEach { chunk ->
-            val batchResults = chunk.map { proxyUrl ->
-                async {
-                    // socks — без secret/mtproto, пропускаем (Telegram MTProto only)
-                    if (proxyUrl.contains("socks?", ignoreCase = true)) return@async null
+        val jobs = proxies.map { proxyUrl ->
+            async {
+                if (stop) {
+                    mutex.withLock { processed++ }
+                    return@async
+                }
+                if (proxyUrl.contains("socks?", ignoreCase = true)) {
+                    mutex.withLock {
+                        processed++
+                        val p = processed
+                        val w = working
+                        withContext(Dispatchers.Main) { onProgress(p, total, w) }
+                    }
+                    return@async
+                }
 
-                    val result = MtprotoChecker.checkUrl(proxyUrl, connectMs, responseMs)
-                    if (result.ok && result.rttMs in 1 until settings.maxPingMs.coerceAtLeast(8000)) {
+                semaphore.withPermit {
+                    if (stop) {
+                        mutex.withLock { processed++ }
+                        return@withPermit
+                    }
+
+                    val result = try {
+                        MtprotoChecker.checkUrl(proxyUrl, connectMs, responseMs)
+                    } catch (_: Exception) {
+                        MtprotoChecker.CheckResult(false, -1, "error")
+                    }
+
+                    val item = if (
+                        result.ok &&
+                        result.rttMs in 1 until settings.maxPingMs.coerceAtLeast(5000)
+                    ) {
                         ProxyWithPing(
                             url = proxyUrl,
                             pingMs = result.rttMs,
@@ -337,22 +365,26 @@ object ProxyManager {
                             status = ProxyStatus.AVAILABLE,
                             statusText = "Доступен"
                         )
-                    } else {
-                        null
+                    } else null
+
+                    val (p, w) = mutex.withLock {
+                        processed++
+                        if (item != null) {
+                            results.add(item)
+                            working++
+                            if (stopAt > 0 && working >= stopAt) {
+                                stop = true
+                            }
+                        }
+                        processed to working
                     }
+                    withContext(Dispatchers.Main) { onProgress(p, total, w) }
                 }
-            }.awaitAll().filterNotNull()
-
-            mutex.withLock {
-                results.addAll(batchResults)
-                working += batchResults.size
-                processed += chunk.size
-            }
-
-            withContext(Dispatchers.Main) {
-                onProgress(processed, total, working)
             }
         }
+
+        // Не ждём «хвост» слишком долго после early-stop
+        jobs.awaitAll()
 
         results.sortedBy { it.pingMs }
     }

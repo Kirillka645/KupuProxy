@@ -18,10 +18,13 @@ enum class NetworkProfileMode {
 data class ProfileSettings(
     val mode: NetworkProfileMode,
     val label: String,
+    /** Параллельных MTProto-проверок */
     val batchSize: Int,
     val connectTimeoutMs: Int,
     val maxPingMs: Int,
-    val maxToCheck: Int
+    val maxToCheck: Int,
+    /** Остановить скан, когда нашли столько рабочих (0 = без лимита) */
+    val stopWhenFound: Int = 0
 ) {
     companion object {
         fun forMode(mode: NetworkProfileMode, context: Context? = null): ProfileSettings {
@@ -33,18 +36,20 @@ data class ProfileSettings(
                 NetworkProfileMode.MOBILE -> ProfileSettings(
                     mode = effective,
                     label = "LTE / мобильный",
-                    batchSize = 10,
-                    connectTimeoutMs = 4000,
-                    maxPingMs = 12000,
-                    maxToCheck = 400
+                    batchSize = 32,          // параллельных проверок
+                    connectTimeoutMs = 1500, // TCP
+                    maxPingMs = 6000,
+                    maxToCheck = 250,
+                    stopWhenFound = 25       // хватит рабочих — выходим
                 )
                 else -> ProfileSettings(
                     mode = NetworkProfileMode.WIFI,
                     label = "Wi‑Fi",
-                    batchSize = 16,
-                    connectTimeoutMs = 5000,
-                    maxPingMs = 15000,
-                    maxToCheck = 800
+                    batchSize = 48,
+                    connectTimeoutMs = 1800,
+                    maxPingMs = 8000,
+                    maxToCheck = 400,
+                    stopWhenFound = 40
                 )
             }
         }

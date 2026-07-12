@@ -147,9 +147,9 @@ class MainActivity : AppCompatActivity() {
         val settings = ProfileSettings.forMode(currentProfileMode(), this)
         tvProfileHint.text = when (settings.mode) {
             NetworkProfileMode.MOBILE ->
-                "LTE: до ${settings.maxToCheck} прокси · batch ${settings.batchSize} · таймаут ${settings.connectTimeoutMs} мс"
+                "LTE: до ${settings.maxToCheck} · ${settings.batchSize} параллельно · стоп на ${settings.stopWhenFound} рабочих"
             else ->
-                "Wi‑Fi: до ${settings.maxToCheck} прокси · batch ${settings.batchSize} · таймаут ${settings.connectTimeoutMs} мс"
+                "Wi‑Fi: до ${settings.maxToCheck} · ${settings.batchSize} параллельно · стоп на ${settings.stopWhenFound} рабочих"
         }
     }
 

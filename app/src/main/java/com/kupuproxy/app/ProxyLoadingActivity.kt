@@ -97,8 +97,11 @@ class ProxyLoadingActivity : AppCompatActivity() {
             }
 
             val prepared = ProxyManager.prepareForProfile(raw, settings)
+            val stopHint = if (settings.stopWhenFound > 0) {
+                " · стоп при ${settings.stopWhenFound} рабочих"
+            } else ""
             updateStatus(
-                "MTProto-проверка ${prepared.size} из ${raw.size} (${settings.label})…\nкак в Telegram: handshake + resPQ",
+                "Быстрая MTProto-проверка: ${prepared.size} из ${raw.size}\n${settings.label}$stopHint",
                 0,
                 prepared.size
             )
@@ -109,7 +112,7 @@ class ProxyLoadingActivity : AppCompatActivity() {
                 settings.label
             ) { processed, total, count ->
                 updateStatus(
-                    "MTProto · ${settings.label}\nТолько «Доступен» (как Telegram)",
+                    "MTProto · ${settings.label} · найдено $count$stopHint",
                     processed,
                     total,
                     count
