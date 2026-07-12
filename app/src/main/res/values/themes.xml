@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.KupuProxy" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/kupu_primary</item>
+        <item name="colorOnPrimary">@color/kupu_on_primary</item>
+        <item name="colorPrimaryContainer">@color/kupu_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/kupu_on_primary_container</item>
+
+        <item name="colorSecondary">@color/kupu_secondary</item>
+        <item name="colorOnSecondary">@color/kupu_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/kupu_secondary_container</item>
+        <item name="colorOnSecondaryContainer">@color/kupu_on_secondary_container</item>
+
+        <item name="colorTertiary">@color/kupu_tertiary</item>
+
+        <item name="android:colorBackground">@color/kupu_bg</item>
+        <item name="colorSurface">@color/kupu_surface</item>
+        <item name="colorOnSurface">@color/kupu_on_surface</item>
+        <item name="colorSurfaceVariant">@color/kupu_surface_variant</item>
+        <item name="colorOnSurfaceVariant">@color/kupu_on_surface_variant</item>
+        <item name="colorOutline">@color/kupu_outline</item>
+
+        <item name="colorError">@color/kupu_error</item>
+        <item name="colorOnError">@color/kupu_on_error</item>
+
+        <item name="android:statusBarColor">@color/kupu_bg</item>
+        <item name="android:navigationBarColor">@color/kupu_bg</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowBackground">@color/kupu_bg</item>
+    </style>
+
+    <style name="Widget.KupuProxy.SourceCard" parent="Widget.Material3.CardView.Elevated">
+        <item name="cardCornerRadius">20dp</item>
+        <item name="cardElevation">0dp</item>
+        <item name="strokeWidth">1dp</item>
+        <item name="strokeColor">@color/kupu_outline</item>
+        <item name="cardBackgroundColor">@color/kupu_surface</item>
+    </style>
+
+    <style name="TextAppearance.KupuProxy.Headline" parent="TextAppearance.Material3.HeadlineSmall">
+        <item name="android:textStyle">bold</item>
+        <item name="android:textColor">@color/kupu_on_surface</item>
+        <item name="android:letterSpacing">-0.02</item>
+    </style>
+</resources>

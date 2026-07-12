@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand -->
+    <color name="kupu_primary">#00C2A8</color>
+    <color name="kupu_primary_dark">#009B87</color>
+    <color name="kupu_primary_container">#D4F7F1</color>
+    <color name="kupu_on_primary">#FFFFFF</color>
+    <color name="kupu_on_primary_container">#003730</color>
+
+    <color name="kupu_secondary">#5B6CFF</color>
+    <color name="kupu_secondary_container">#E0E4FF</color>
+    <color name="kupu_on_secondary">#FFFFFF</color>
+    <color name="kupu_on_secondary_container">#121848</color>
+
+    <color name="kupu_tertiary">#FF7A59</color>
+
+    <!-- Surfaces (light) -->
+    <color name="kupu_bg">#F4F7FB</color>
+    <color name="kupu_surface">#FFFFFF</color>
+    <color name="kupu_surface_variant">#E8EEF5</color>
+    <color name="kupu_on_surface">#0F172A</color>
+    <color name="kupu_on_surface_variant">#5B6B7C</color>
+    <color name="kupu_outline">#C9D4E0</color>
+
+    <!-- Status -->
+    <color name="ping_excellent">#12B76A</color>
+    <color name="ping_good">#F79009</color>
+    <color name="ping_slow">#F04438</color>
+
+    <color name="kupu_error">#BA1A1A</color>
+    <color name="kupu_on_error">#FFFFFF</color>
+
+    <color name="ic_launcher_background">#0B1220</color>
+    <color name="white">#FFFFFF</color>
+    <color name="black">#000000</color>
+</resources>

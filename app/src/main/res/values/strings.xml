@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">KupuProxy</string>
+    <string name="tagline">Быстрые MTProto-прокси для Telegram</string>
+    <string name="choose_source">Выберите источник прокси</string>
+    <string name="sources_title">Источники</string>
+    <string name="source_russia">Россия</string>
+    <string name="source_russia_desc">Маскировка под Яндекс, VK, Mail.ru</string>
+    <string name="source_europe">Европа</string>
+    <string name="source_europe_desc">Маскировка под Google, Amazon, Cloudflare</string>
+    <string name="source_surfboard">SurfboardV2ray</string>
+    <string name="source_surfboard_desc">Большой проверенный список</string>
+    <string name="load_proxies">Загрузить прокси</string>
+    <string name="merge_all">Скачать все прокси</string>
+    <string name="check_file">Проверить из файла</string>
+    <string name="help">Справка</string>
+    <string name="theme">Тема</string>
+    <string name="github">GitHub</string>
+    <string name="cancel">Отмена</string>
+    <string name="copy">Копировать</string>
+    <string name="connect_telegram">В Telegram</string>
+    <string name="copy_top10">Топ-10</string>
+    <string name="copy_all">Скопировать все</string>
+    <string name="about">О приложении</string>
+    <string name="loading_title">Загрузка прокси</string>
+    <string name="checking_title">Проверка прокси</string>
+    <string name="merge_title">Объединение источников</string>
+    <string name="preparing">Подготовка…</string>
+    <string name="ping_format">%1$d ms</string>
+    <string name="proxy_copied">Прокси скопирован</string>
+    <string name="telegram_missing">Telegram не установлен</string>
+    <string name="no_proxies">Нет прокси для копирования</string>
+    <string name="help_message">KupuProxy загружает MTProto-прокси из открытых источников, проверяет доступность и сортирует по пингу.\n\n• До 50 проверок параллельно\n• Показывает только рабочие сервера\n• Чем ниже пинг — тем быстрее\n\nИсточники:\n• Kort0881 — RU / EU\n• SurfboardV2ray — большой список\n\nСкачать все — объединяет источники без проверки.\nПроверить из файла — ваш .txt со ссылками tg://proxy.</string>
+    <string name="disclaimer">Работоспособность прокси в Telegram не гарантируется. Используйте на свой страх и риск.</string>
+</resources>

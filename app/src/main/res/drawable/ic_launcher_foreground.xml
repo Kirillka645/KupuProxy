@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Soft glow circle -->
+    <path
+        android:fillColor="#1A00C2A8"
+        android:pathData="M54,54m-34,0a34,34 0,1 1,68 0a34,34 0,1 1,-68 0" />
+    <!-- Outer ring -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#00C2A8"
+        android:strokeWidth="3"
+        android:pathData="M54,54m-28,0a28,28 0,1 1,56 0a28,28 0,1 1,-56 0" />
+    <!-- Shield / proxy body -->
+    <path
+        android:fillColor="#00C2A8"
+        android:pathData="M54,30c-9,4 -16,5 -18,5v14c0,12 8,20 18,24 10,-4 18,-12 18,-24V35c-2,0 -9,-1 -18,-5z" />
+    <!-- Bolt -->
+    <path
+        android:fillColor="#0B1220"
+        android:pathData="M57,42h-8l-2,10h6l-3,12 12,-14h-7z" />
+</vector>
