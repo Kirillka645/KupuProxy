@@ -19,7 +19,7 @@ android {
         buildConfigField(
             "String",
             "GITHUB_REPO",
-            "\"KupuProxy/KupuProxy\""
+            "\"Kirillka645/KupuProxy\""
         )
     }
 
