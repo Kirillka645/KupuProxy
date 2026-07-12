@@ -56,7 +56,7 @@ __description__ = (
     "Самообновление с GitHub."
 )
 __author__ = "@Kirillka645"
-__version__ = "1.1.6"
+__version__ = "1.1.7"
 __icon__ = "exteraPlugins/1"
 __min_version__ = "11.9.1"
 # 1.4.0 / 1.4.3.3 — ок; не требуем 1.4.3.10
@@ -913,16 +913,25 @@ class KupuProxyPlugin(BasePlugin):
         run_on_ui_thread(go)
 
     def _reply(self, dialog_id: int, text: str):
-        """Best-effort reply in chat (chunks if long); falls back to bulletin."""
+        """Ответ в тот же чат (чанками); иначе bulletin."""
+        did = int(dialog_id or 0)
+        if not did:
+            did = self._current_dialog_id()
         chunks = self._chunk_text(text, 3500)
         ok_any = False
         for chunk in chunks:
-            if self._send_text(dialog_id, chunk):
+            if self._send_text(did, chunk):
                 ok_any = True
+                # небольшая пауза между чанками
+                try:
+                    time.sleep(0.15)
+                except Exception:
+                    pass
             else:
                 break
         if not ok_any:
-            self._bulletin(text[:180])
+            self.log(f"_reply fail dialog_id={did}")
+            self._bulletin(text[:180], error=True)
 
     @staticmethod
     def _chunk_text(text: str, limit: int = 3500) -> List[str]:
@@ -944,25 +953,157 @@ class KupuProxyPlugin(BasePlugin):
             parts.append("\n".join(cur))
         return parts or [text[:limit]]
 
+    def _current_dialog_id(self) -> int:
+        """dialog_id открытого чата (ChatActivity)."""
+        try:
+            frag = get_last_fragment()
+            if frag is None:
+                return 0
+            for name in ("getDialogId", "getDialogid"):
+                try:
+                    m = getattr(frag, name, None)
+                    if callable(m):
+                        v = int(m())
+                        if v:
+                            return v
+                except Exception:
+                    pass
+            for field in ("dialog_id", "dialogId", "chatId", "mergedDialogId"):
+                try:
+                    if get_private_field is not None:
+                        v = get_private_field(frag, field)
+                        if v is not None and int(v) != 0:
+                            return int(v)
+                except Exception:
+                    pass
+                try:
+                    v = getattr(frag, field, None)
+                    if v is not None and int(v) != 0:
+                        return int(v)
+                except Exception:
+                    pass
+        except Exception as e:
+            self.log(f"_current_dialog_id: {e}")
+        return 0
+
+    def _extract_dialog_id(self, params: Any, account: int = 0) -> int:
+        """Достать peer/dialog_id из SendMessageParams."""
+        candidates: List[int] = []
+
+        def _as_int(v) -> Optional[int]:
+            if v is None:
+                return None
+            try:
+                # Java Long
+                if hasattr(v, "longValue"):
+                    return int(v.longValue())
+            except Exception:
+                pass
+            try:
+                return int(v)
+            except Exception:
+                return None
+
+        for attr in ("peer", "dialogId", "dialog_id", "did", "chatId"):
+            try:
+                v = _as_int(getattr(params, attr, None))
+                if v:
+                    candidates.append(v)
+            except Exception:
+                pass
+        for meth in ("getPeer", "getDialogId"):
+            try:
+                m = getattr(params, meth, None)
+                if callable(m):
+                    v = _as_int(m())
+                    if v:
+                        candidates.append(v)
+            except Exception:
+                pass
+
+        # fragment fallback
+        try:
+            v = self._current_dialog_id()
+            if v:
+                candidates.append(v)
+        except Exception:
+            pass
+
+        for c in candidates:
+            if c != 0:
+                return c
+        return 0
+
     def _send_text(self, dialog_id: int, text: str) -> bool:
+        """
+        Отправить текст в чат.
+        SDK: send_message({"peer": dialog_id, "message": text, ...})
+        (позиционные args в новых SDK не работают).
+        """
+        did = int(dialog_id or 0)
+        if not did:
+            did = self._current_dialog_id()
+        if not did:
+            self.log("send_text: dialog_id=0")
+            return False
+        msg = str(text or "")
+        if not msg:
+            return False
+
+        # 1) client_utils — правильный API (как TelegaDetector / proxy_tools)
         try:
             from client_utils import send_message
 
-            for args in (
-                (dialog_id, text),
-                (text, dialog_id),
-                (int(dialog_id), str(text)),
-            ):
+            payload = {
+                "peer": did,
+                "message": msg,
+                "searchLinks": True,
+                "notify": True,
+            }
+            try:
+                send_message(payload)
+                return True
+            except Exception as e1:
+                self.log(f"send_message(dict): {e1}")
+            # старые сигнатуры
+            for args in ((did, msg), (msg, did)):
                 try:
                     send_message(*args)
                     return True
                 except TypeError:
                     continue
-                except Exception as e:
-                    self.log(f"send_message{args[:1]}: {e}")
-                    continue
+                except Exception as e2:
+                    self.log(f"send_message{args[:1]}: {e2}")
         except Exception as e:
-            self.log(f"send_message import/fail: {e}")
+            self.log(f"send_message import: {e}")
+
+        # 2) SendMessagesHelper (fallback)
+        try:
+            from org.telegram.messenger import SendMessagesHelper, UserConfig
+
+            account = int(UserConfig.selectedAccount)
+            helper = SendMessagesHelper.getInstance(account)
+            if jclass is not None:
+                try:
+                    Params = jclass(
+                        "org.telegram.messenger.SendMessagesHelper$SendMessageParams"
+                    )
+                    # of(...) сигнатуры разные — пробуем минимальные
+                    for args in (
+                        (msg, did, None, None, None, True, None),
+                        (msg, did),
+                    ):
+                        try:
+                            p = Params.of(*args)
+                            helper.sendMessage(p)
+                            return True
+                        except Exception:
+                            continue
+                except Exception as e3:
+                    self.log(f"SendMessageParams: {e3}")
+        except Exception as e:
+            self.log(f"SendMessagesHelper: {e}")
+
         return False
 
     def _on_drawer_click(self, context: Dict[str, Any]):
@@ -1054,38 +1195,26 @@ class KupuProxyPlugin(BasePlugin):
             if not text.lower().startswith(".kupu"):
                 return HookResult()
 
-            # block sending command to chat
-            dialog_id = getattr(params, "peer", None) or getattr(params, "dialog_id", None)
-            try:
-                # dialog id sometimes in other fields
-                if dialog_id is None and hasattr(params, "peer"):
-                    dialog_id = 0
-            except Exception:
-                dialog_id = 0
-
-            # Prefer getting dialog from fragment
-            try:
-                frag = get_last_fragment()
-                if frag and hasattr(frag, "getDialogId"):
-                    dialog_id = int(frag.getDialogId())
-            except Exception:
-                pass
+            dialog_id = self._extract_dialog_id(params, account)
+            self.log(f"cmd={text!r} dialog_id={dialog_id} account={account}")
 
             threading.Thread(
                 target=self._handle_command,
-                args=(text, int(dialog_id or 0)),
+                args=(text, int(dialog_id or 0), int(account or 0)),
                 daemon=True,
             ).start()
 
-            result = HookResult(strategy=HookStrategy.CANCEL)
-            return result
+            return HookResult(strategy=HookStrategy.CANCEL)
         except Exception as e:
             self.log(f"cmd hook: {e}")
             return HookResult()
 
-    def _handle_command(self, text: str, dialog_id: int):
+    def _handle_command(self, text: str, dialog_id: int, account: int = 0):
         parts = text.strip().split()
         cmd = parts[1].lower() if len(parts) > 1 else "help"
+        if not dialog_id:
+            dialog_id = self._current_dialog_id()
+            self.log(f"handle_command: resolved dialog_id={dialog_id}")
 
         if cmd in ("help", "h", "?"):
             self._reply(
@@ -1144,27 +1273,64 @@ class KupuProxyPlugin(BasePlugin):
         )
 
     def _cmd_chat(self, dialog_id: int):
-        """Выдать в чат все рабочие прокси полными tg:// ссылками."""
+        """Отправить все рабочие tg:// ссылки **в тот же чат**, где команда."""
+        did = int(dialog_id or 0) or self._current_dialog_id()
+        if not did:
+            self._bulletin(
+                "Не вижу chat id. Открой чат и снова: .kupu chat",
+                error=True,
+            )
+            return
+
         with self._lock:
             items = list(self._results)
         if not items:
-            self._reply(dialog_id, "Пока пусто. Сначала `.kupu scan`")
+            self._reply(
+                did,
+                "Пока пусто. Сначала `.kupu scan`, потом `.kupu chat`",
+            )
             return
 
-        header = f"🔌 KupuProxy — рабочие ({len(items)}):\n\n"
+        header = f"KupuProxy — рабочие ({len(items)}):\n\n"
         lines = []
         for i, p in enumerate(items):
             url = p.get("url") or ""
-            if not url.startswith("tg://"):
+            if not str(url).startswith("tg://"):
                 url = (
                     f"tg://proxy?server={p['server']}&port={p['port']}"
                     f"&secret={p.get('secret', '')}"
                 )
-            lines.append(f"{i+1}. {url}  ({p['ping']} ms)")
+            lines.append(f"{i + 1}. {url}")
 
-        body = header + "\n".join(lines)
-        self._reply(dialog_id, body)
-        self._bulletin(f"Отправлено {len(items)} прокси в чат")
+        # по ~25 ссылок на сообщение — tg:// длинные
+        batch: List[str] = []
+        batch_n = 0
+        sent = 0
+        for line in lines:
+            batch.append(line)
+            batch_n += 1
+            if batch_n >= 25:
+                body = header + "\n".join(batch) if sent == 0 else "\n".join(batch)
+                if self._send_text(did, body):
+                    sent += 1
+                else:
+                    self._reply(did, body)
+                    sent += 1
+                batch = []
+                batch_n = 0
+                try:
+                    time.sleep(0.25)
+                except Exception:
+                    pass
+        if batch:
+            body = header + "\n".join(batch) if sent == 0 else "\n".join(batch)
+            if not self._send_text(did, body):
+                self._reply(did, body)
+            else:
+                sent += 1
+
+        self._bulletin(f"В чат: {len(items)} прокси ({sent} сообщ.)")
+        self.log(f"_cmd_chat did={did} items={len(items)} msgs={sent}")
 
     def _cmd_add(self, dialog_id: int):
         """Добавить все рабочие из скана в список прокси Telegram."""
