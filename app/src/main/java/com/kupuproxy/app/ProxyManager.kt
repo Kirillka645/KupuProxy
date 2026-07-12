@@ -136,6 +136,20 @@ object ProxyManager {
                 "https://cdn.jsdelivr.net/gh/Grim1313/mtproto-for-telegram@master/all_proxies.txt",
                 "https://raw.githubusercontent.com/Grim1313/mtproto-for-telegram/master/all_proxies.txt"
             )
+        ),
+        Source(
+            id = "yagami200",
+            name = "Yagami200 free",
+            description = "Auto-test every 8h · JSON+TXT",
+            urls = listOf(
+                "https://raw.githubusercontent.com/Yagami200/free-mtproto-proxies/main/all_proxies.txt",
+                "https://raw.githubusercontent.com/Yagami200/free-mtproto-proxies/main/proxies.json",
+                "https://cdn.jsdelivr.net/gh/Yagami200/free-mtproto-proxies@main/all_proxies.txt",
+                "https://cdn.jsdelivr.net/gh/Yagami200/free-mtproto-proxies@main/proxies.json",
+                "https://raw.githack.com/Yagami200/free-mtproto-proxies/main/all_proxies.txt",
+                "https://raw.githack.com/Yagami200/free-mtproto-proxies/main/proxies.json",
+                "https://ghproxy.net/https://raw.githubusercontent.com/Yagami200/free-mtproto-proxies/main/proxies.json"
+            )
         )
     )
 

@@ -3,4 +3,10 @@
     <external-path
         name="downloads"
         path="Download/" />
+    <cache-path
+        name="apk_updates"
+        path="updates/" />
+    <files-path
+        name="apk_files"
+        path="updates/" />
 </paths>

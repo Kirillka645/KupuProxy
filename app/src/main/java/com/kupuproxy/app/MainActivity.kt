@@ -13,6 +13,8 @@ import com.google.android.material.button.MaterialButton
 import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.progressindicator.LinearProgressIndicator
+import com.kupuproxy.app.updater.ApkDownloader
 import com.kupuproxy.app.updater.GitHubRelease
 import com.kupuproxy.app.updater.UpdateChecker
 import kotlinx.coroutines.Dispatchers
@@ -30,6 +32,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnEurope: MaterialCardView
     private lateinit var btnSurf: MaterialCardView
     private lateinit var btnArgh: MaterialCardView
+    private lateinit var btnYagami: MaterialCardView
     private lateinit var btnOfflineSeed: MaterialButton
     private lateinit var btnLastWifi: MaterialButton
     private lateinit var btnLastMobile: MaterialButton
@@ -45,6 +48,8 @@ class MainActivity : AppCompatActivity() {
 
     private val client = OkHttpClient()
     private lateinit var updateChecker: UpdateChecker
+    private lateinit var apkDownloader: ApkDownloader
+    private var pendingUpdate: GitHubRelease? = null
 
     private val filePickerLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -56,6 +61,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         updateChecker = UpdateChecker(this, client)
+        apkDownloader = ApkDownloader(this)
         initViews()
         setupProfileToggle()
         setupClickListeners()
@@ -68,6 +74,14 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         refreshNetworkLabel()
         updateOfflineButtons()
+        // После разрешения «установка из неизвестных» — продолжаем обновление
+        pendingUpdate?.let { release ->
+            if (apkDownloader.canInstallPackages()) {
+                val r = release
+                pendingUpdate = null
+                startApkDownloadAndInstall(r)
+            }
+        }
     }
 
     private fun applySavedTheme() {
@@ -90,6 +104,7 @@ class MainActivity : AppCompatActivity() {
         btnEurope = findViewById(R.id.btn_europe_card)
         btnSurf = findViewById(R.id.btn_surf_card)
         btnArgh = findViewById(R.id.btn_argh_card)
+        btnYagami = findViewById(R.id.btn_yagami_card)
         btnOfflineSeed = findViewById(R.id.btnOfflineSeed)
         btnLastWifi = findViewById(R.id.btnLastWifi)
         btnLastMobile = findViewById(R.id.btnLastMobile)
@@ -183,6 +198,7 @@ class MainActivity : AppCompatActivity() {
         btnEurope.setOnClickListener { startScan(MODE_SOURCE, "Европа (Kort)", "kort_eu") }
         btnSurf.setOnClickListener { startScan(MODE_SOURCE, "SurfboardV2ray", "surfboard") }
         btnArgh.setOnClickListener { startScan(MODE_SOURCE, "Argh94 Scraper", "argh94_scraper") }
+        btnYagami.setOnClickListener { startScan(MODE_SOURCE, "Yagami200 free", "yagami200") }
 
         btnOfflineSeed.setOnClickListener {
             startScan(MODE_SEED, "Seed (офлайн APK)")
@@ -291,7 +307,8 @@ class MainActivity : AppCompatActivity() {
             .setMessage(
                 "• Проверка как в Telegram: MTProxy handshake + req_pq → resPQ.\n" +
                     "  В списке только статус «Доступен» (мёртвые secret/порты отсекаются).\n\n" +
-                    "• Мега-скан: 6+ источников через CDN-зеркала.\n\n" +
+                    "• Мега-скан: SoliSpirit, Yagami200, Kort, Argh94, Surfboard…\n\n" +
+                    "• Обновления: кнопка «Скачать и установить» без GitHub.\n\n" +
                     "• Профили Wi‑Fi / LTE — разный batch и таймаут.\n\n" +
                     "• Seed ~580 в APK + локальный кэш.\n\n" +
                     "• ⭐ избранное, фильтр пинга, шаринг.\n\n" +
@@ -319,14 +336,114 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showUpdateDialog(release: GitHubRelease) {
+        val changelog = release.changelog.ifBlank { "Доступна новая версия KupuProxy" }
+        val hasApk = release.apkUrl.isNotBlank()
+        val msg = buildString {
+            append(changelog.take(1200))
+            if (hasApk) append("\n\nМожно скачать и установить прямо здесь — без GitHub.")
+            else append("\n\nAPK в релизе не найден — откройте страницу на GitHub.")
+        }
+
         MaterialAlertDialogBuilder(this)
             .setTitle("Обновление ${release.tagName}")
-            .setMessage(release.changelog.ifBlank { "Доступна новая версия KupuProxy" })
-            .setPositiveButton("Открыть релиз") { _, _ ->
+            .setMessage(msg)
+            .setPositiveButton(if (hasApk) "Скачать и установить" else "Открыть GitHub") { _, _ ->
+                if (hasApk) {
+                    if (!apkDownloader.canInstallPackages()) {
+                        pendingUpdate = release
+                        Toast.makeText(
+                            this,
+                            "Разрешите установку из этого источника",
+                            Toast.LENGTH_LONG
+                        ).show()
+                        apkDownloader.openInstallPermissionSettings(this)
+                    } else {
+                        startApkDownloadAndInstall(release)
+                    }
+                } else {
+                    updateChecker.openReleasePage(release.htmlUrl)
+                }
+            }
+            .setNeutralButton("GitHub") { _, _ ->
                 updateChecker.openReleasePage(release.htmlUrl)
             }
             .setNegativeButton("Позже", null)
             .show()
+    }
+
+    private fun startApkDownloadAndInstall(release: GitHubRelease) {
+        val indicator = LinearProgressIndicator(this).apply {
+            isIndeterminate = false
+            max = 100
+            progress = 0
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(48, 32, 48, 16)
+            }
+            trackCornerRadius = 8
+            trackThickness = 10
+        }
+        val statusTv = TextView(this).apply {
+            text = "Скачивание APK…"
+            setPadding(48, 16, 48, 8)
+            textSize = 14f
+        }
+        val box = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            addView(statusTv)
+            addView(indicator)
+        }
+
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setTitle("Обновление ${release.tagName}")
+            .setView(box)
+            .setCancelable(false)
+            .setNegativeButton("Отмена") { d, _ ->
+                d.dismiss()
+            }
+            .create()
+        dialog.show()
+
+        val job = lifecycleScope.launch {
+            try {
+                val file = apkDownloader.download(release.apkUrl, "KupuProxy-${release.tagName}.apk") { pct ->
+                    indicator.progress = pct
+                    statusTv.text = "Скачивание… $pct%"
+                }
+                statusTv.text = "Установка…"
+                dialog.dismiss()
+                if (!apkDownloader.canInstallPackages()) {
+                    pendingUpdate = release
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Нужно разрешение на установку",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    apkDownloader.openInstallPermissionSettings(this@MainActivity)
+                    return@launch
+                }
+                Toast.makeText(this@MainActivity, "Открываю установщик…", Toast.LENGTH_SHORT).show()
+                apkDownloader.installApk(this@MainActivity, file)
+            } catch (e: Exception) {
+                dialog.dismiss()
+                MaterialAlertDialogBuilder(this@MainActivity)
+                    .setTitle("Не удалось обновить")
+                    .setMessage(e.message ?: "Ошибка загрузки")
+                    .setPositiveButton("GitHub") { _, _ ->
+                        updateChecker.openReleasePage(release.htmlUrl)
+                    }
+                    .setNegativeButton("Закрыть", null)
+                    .show()
+            }
+        }
+        dialog.setOnDismissListener {
+            // user cancelled — job continues unless we cancel; cancel on dismiss only if still downloading
+            if (job.isActive && indicator.progress < 100) {
+                job.cancel()
+            }
+        }
     }
 
     private fun openUrl(url: String) {
