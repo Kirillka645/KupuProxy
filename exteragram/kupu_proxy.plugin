@@ -692,7 +692,10 @@ class KupuProxyPlugin(BasePlugin):
                 key="auto_on_rotation",
                 text="При вкл. «Автопереключение» — автоскан",
                 default=True,
-                subtext="Без своего UI: только нативный switch Telegram",
+            ),
+            Text(
+                text="Без своего UI на экране прокси",
+                subtext="Только нативные переключатели Telegram",
             ),
             Divider(),
             Header(text="Скан"),
