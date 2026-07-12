@@ -56,7 +56,7 @@ __description__ = (
     "Самообновление с GitHub."
 )
 __author__ = "@Kirillka645"
-__version__ = "1.1.9"
+__version__ = "1.2.0"
 __icon__ = "exteraPlugins/1"
 __min_version__ = "11.9.1"
 # 1.4.0 / 1.4.3.3 — ок; не требуем 1.4.3.10
@@ -308,8 +308,12 @@ class KupuProxyPlugin(BasePlugin):
 
     def _hook_proxy_list_ui(self):
         """
-        Строки KupuProxy в КОНЦЕ списка, после proxy_tools и нативных.
-        Не перехватываем чужие pos (раньше ломали Proxy Tools → пустой блок).
+        Совместимость с proxy_tools:
+        - +4 строки в getItemCount (стекуется: N+11+4)
+        - наши = ПОСЛЕДНИЕ 4 pos
+        - viewType/bind в after_hooked_method, чтобы ПЕРЕБИТЬ proxy_tools
+          (он забирает все pos >= rowCount)
+        - click listener переустанавливаем в createView и onResume
         """
         if jclass is None or MethodHook is None or Integer is None:
             self.log("hook_proxy_list_ui: java/MethodHook unavailable")
@@ -337,78 +341,91 @@ class KupuProxyPlugin(BasePlugin):
                     pass
             return getattr(obj, name, None)
 
-        def _our_index(adapter, pos):
-            """
-            Наши строки — последние `extra` позиций total.
-            Возвращает 0..extra-1 или None (чужая/нативная строка).
-            """
+        def _our_index(adapter, pos, total_hint=None):
+            """Последние `extra` позиций — наши. Не вызываем getItemCount из getItemCount."""
             try:
-                # getItemCount уже включает наш +extra (после хука)
-                total = int(adapter.getItemCount())
+                pos = int(pos)
             except Exception:
+                return None
+            total = total_hint
+            if total is None:
                 try:
-                    act = _outer_field(adapter, "this$0")
-                    native = int(_outer_field(act, "rowCount") or 0)
-                    total = native + extra
+                    # безопасно: getItemCount не зовёт getItemViewType
+                    total = int(adapter.getItemCount())
                 except Exception:
-                    return None
+                    try:
+                        act = _outer_field(adapter, "this$0")
+                        total = int(_outer_field(act, "rowCount") or 0) + extra
+                    except Exception:
+                        return None
+            try:
+                total = int(total)
+            except Exception:
+                return None
             start = total - extra
             if pos < start or pos >= total:
                 return None
-            return int(pos - start)
+            return pos - start
+
+        def _type_for_idx(idx):
+            if idx in (0, 3):
+                return 0  # ShadowSectionCell
+            if idx == 1:
+                return 3  # TextCheckCell
+            return 1  # TextSettingsCell
 
         class GetItemCountHook(MethodHook):
             def after_hooked_method(self, param):
                 try:
-                    # стекается с proxy_tools: (N+11) + 4
                     prev = int(param.getResult())
                     param.setResult(Integer(prev + extra))
+                    p = plugin_ref()
+                    if p is not None:
+                        # prev = всё до нас (native + proxy_tools)
+                        p._kupu_start_pos = prev
+                        p._kupu_total_pos = prev + extra
                 except Exception:
                     pass
 
         class GetItemViewTypeHook(MethodHook):
-            def before_hooked_method(self, param):
+            # AFTER — чтобы перебить proxy_tools (он пишет type для всех pos>=rowCount)
+            def after_hooked_method(self, param):
                 try:
+                    p = plugin_ref()
                     adapter = param.thisObject
                     pos = int(param.args[0])
-                    idx = _our_index(adapter, pos)
+                    total = getattr(p, "_kupu_total_pos", None) if p else None
+                    idx = _our_index(adapter, pos, total_hint=total)
+                    if idx is None and p is not None:
+                        start = getattr(p, "_kupu_start_pos", None)
+                        if start is not None and pos >= start and pos < start + extra:
+                            idx = pos - start
                     if idx is None:
-                        return  # proxy_tools / native — не трогаем
-                    # 0,3 shadow; 1 check; 2 settings
-                    if idx in (0, 3):
-                        param.setResult(Integer(0))
-                    elif idx == 1:
-                        param.setResult(Integer(3))  # TextCheckCell
-                    else:
-                        param.setResult(Integer(1))  # TextSettingsCell
+                        return
+                    param.setResult(Integer(_type_for_idx(idx)))
                 except Exception:
                     pass
 
         class GetItemIdHook(MethodHook):
-            def before_hooked_method(self, param):
+            def after_hooked_method(self, param):
                 try:
                     if Long is None:
                         return
+                    p = plugin_ref()
                     adapter = param.thisObject
                     pos = int(param.args[0])
-                    idx = _our_index(adapter, pos)
+                    total = getattr(p, "_kupu_total_pos", None) if p else None
+                    idx = _our_index(adapter, pos, total_hint=total)
+                    if idx is None and p is not None:
+                        start = getattr(p, "_kupu_start_pos", None)
+                        if start is not None and start <= pos < start + extra:
+                            idx = pos - start
                     if idx is not None:
                         param.setResult(Long(91000 + idx))
                 except Exception:
                     pass
 
         class BindHook(MethodHook):
-            def before_hooked_method(self, param):
-                try:
-                    adapter = param.thisObject
-                    pos = int(param.args[1])
-                    idx = _our_index(adapter, pos)
-                    if idx is not None:
-                        # только свои — не блокируем bind proxy_tools
-                        param.setResult(None)
-                except Exception:
-                    pass
-
             def after_hooked_method(self, param):
                 plugin = plugin_ref()
                 if not plugin:
@@ -416,9 +433,15 @@ class KupuProxyPlugin(BasePlugin):
                 try:
                     adapter = param.thisObject
                     pos = int(param.args[1])
-                    idx = _our_index(adapter, pos)
+                    total = getattr(plugin, "_kupu_total_pos", None)
+                    idx = _our_index(adapter, pos, total_hint=total)
+                    if idx is None:
+                        start = getattr(plugin, "_kupu_start_pos", None)
+                        if start is not None and start <= pos < start + extra:
+                            idx = pos - start
                     if idx is None:
                         return
+
                     cell = param.args[0].itemView
                     Theme = jclass("org.telegram.ui.ActionBar.Theme")
                     try:
@@ -430,108 +453,167 @@ class KupuProxyPlugin(BasePlugin):
 
                     if idx == 1:
                         on = bool(plugin.get_setting("kupu_switch_on", False))
-                        try:
-                            cell.setTextAndCheck("KupuProxy", on, True)
-                        except Exception:
+                        ok = False
+                        for args in (( "KupuProxy", on, True), ("KupuProxy", on, False)):
                             try:
-                                cell.setTextAndCheck("KupuProxy", on, False)
+                                cell.setTextAndCheck(*args)
+                                ok = True
+                                break
+                            except Exception:
+                                continue
+                        if not ok:
+                            try:
+                                cell.setText("KupuProxy", True)
                             except Exception as e:
-                                plugin.log(f"setTextAndCheck: {e}")
+                                plugin.log(f"bind check: {e}")
                     elif idx == 2:
-                        try:
-                            cell.setText("Сделать всё", False)
-                        except Exception as e:
-                            plugin.log(f"setText: {e}")
+                        for t in ("Сделать всё", "Сделать все", "KupuProxy: auto"):
+                            try:
+                                cell.setText(t, False)
+                                break
+                            except Exception:
+                                try:
+                                    cell.setText(t, True)
+                                    break
+                                except Exception:
+                                    continue
+                    # idx 0,3 — shadow, текста нет
                 except Exception as e:
                     try:
                         plugin.log(f"BindHook: {e}")
                     except Exception:
                         pass
 
+        def _install_click(act):
+            plugin = plugin_ref()
+            if not plugin or act is None:
+                return
+            try:
+                lv = _outer_field(act, "listView")
+                if lv is None:
+                    return
+                old_listener = _outer_field(lv, "onItemClickListener")
+                try:
+                    if old_listener is not None and "KupuProxyClick" in str(
+                        type(old_listener).__name__
+                    ) + str(old_listener.getClass().getName()):
+                        # уже наш — но proxy_tools мог обернуть снаружи; перепоставим
+                        pass
+                except Exception:
+                    pass
+
+                ListenerBase = jclass(
+                    "org.telegram.ui.Components.RecyclerListView$OnItemClickListener"
+                )
+
+                class KupuProxyClick(dynamic_proxy(ListenerBase)):
+                    def __init__(self, old, pref, activity):
+                        super().__init__()
+                        self.old = old
+                        self.pref = pref
+                        self.activity = activity
+
+                    def onItemClick(self, view, pos):
+                        p = self.pref()
+                        if not p:
+                            return
+                        try:
+                            pos = int(pos)
+                        except Exception:
+                            if self.old:
+                                self.old.onItemClick(view, pos)
+                            return
+
+                        idx = None
+                        start = getattr(p, "_kupu_start_pos", None)
+                        if start is not None and start <= pos < start + extra:
+                            idx = pos - start
+                        else:
+                            ad = _outer_field(self.activity, "listAdapter")
+                            if ad is not None:
+                                idx = _our_index(ad, pos)
+
+                        if idx is None:
+                            if self.old:
+                                self.old.onItemClick(view, pos)
+                            return
+
+                        if idx == 1:
+                            cur = bool(p.get_setting("kupu_switch_on", False))
+                            nxt = not cur
+                            p._save_kupu_switch(nxt)
+                            try:
+                                view.setChecked(nxt)
+                            except Exception:
+                                pass
+                            if nxt:
+                                p._bulletin("KupuProxy: ищу рабочие…")
+                                p._one_tap_setup(None)
+                            else:
+                                p._bulletin("KupuProxy выкл")
+                        elif idx == 2:
+                            p._save_kupu_switch(True)
+                            p._one_tap_setup(None)
+                        # shadow idx 0,3 — ignore
+
+                # всегда снаружи, чтобы клики не глотал proxy_tools
+                # (у PT нет else → клик по «чужим» extra pos просто ignored)
+                lv.setOnItemClickListener(
+                    KupuProxyClick(old_listener, plugin_ref, act)
+                )
+            except Exception as e:
+                if plugin:
+                    plugin.log(f"_install_click: {e}")
+
         class CreateViewHook(MethodHook):
             def after_hooked_method(self, param):
                 plugin = plugin_ref()
+                act = param.thisObject
                 if not plugin:
                     return
-                act = param.thisObject
                 try:
+                    _install_click(act)
+                    # proxy_tools тоже вешает listener в createView —
+                    # повторим через post, чтобы наш listener был снаружи
                     lv = _outer_field(act, "listView")
-                    if lv is None:
-                        return
-                    old_listener = _outer_field(lv, "onItemClickListener")
-                    try:
-                        if old_listener and "KupuProxyClick" in str(
-                            old_listener.getClass().getName()
-                        ):
-                            return
-                    except Exception:
-                        pass
+                    if lv is not None and dynamic_proxy is not None:
+                        try:
+                            Runnable = jclass("java.lang.Runnable")
 
-                    ListenerBase = jclass(
-                        "org.telegram.ui.Components.RecyclerListView$OnItemClickListener"
-                    )
-                    adapter_ref = [
-                        _outer_field(act, "listAdapter")
-                        or _outer_field(lv, "adapter")
-                    ]
+                            class RebindClick(dynamic_proxy(Runnable)):
+                                def run(self):
+                                    try:
+                                        _install_click(act)
+                                    except Exception:
+                                        pass
 
-                    class KupuProxyClick(dynamic_proxy(ListenerBase)):
-                        def __init__(self, old, pref, activity):
-                            super().__init__()
-                            self.old = old
-                            self.pref = pref
-                            self.activity = activity
-
-                        def onItemClick(self, view, pos):
-                            p = self.pref()
-                            if not p:
-                                return
-                            ad = adapter_ref[0]
-                            if ad is None:
-                                ad = _outer_field(self.activity, "listAdapter")
-                            idx = None
+                            r = RebindClick()
+                            lv.post(r)
                             try:
-                                if ad is not None:
-                                    idx = _our_index(ad, int(pos))
+                                lv.postDelayed(r, 300)
                             except Exception:
-                                idx = None
-
-                            if idx is None:
-                                # proxy_tools / native
-                                if self.old:
-                                    self.old.onItemClick(view, pos)
-                                return
-
-                            if idx == 1:
-                                cur = bool(p.get_setting("kupu_switch_on", False))
-                                nxt = not cur
-                                p._save_kupu_switch(nxt)
-                                try:
-                                    view.setChecked(nxt)
-                                except Exception:
-                                    pass
-                                if nxt:
-                                    p._bulletin("KupuProxy: ищу рабочие…")
-                                    p._one_tap_setup(None)
-                                else:
-                                    p._bulletin("KupuProxy выкл")
-                            elif idx == 2:
-                                p._save_kupu_switch(True)
-                                p._one_tap_setup(None)
-
-                    lv.setOnItemClickListener(
-                        KupuProxyClick(old_listener, plugin_ref, act)
-                    )
-                    plugin.log("ProxyListActivity click listener OK (end-rows)")
+                                pass
+                        except Exception as e:
+                            plugin.log(f"post click: {e}")
+                    plugin.log("ProxyListActivity createView: click OK")
                 except Exception as e:
                     plugin.log(f"CreateViewHook: {e}\n{traceback.format_exc()}")
+
+        class ResumeHook(MethodHook):
+            def after_hooked_method(self, param):
+                try:
+                    _install_click(param.thisObject)
+                except Exception:
+                    pass
 
         for m in ActivityCls.getDeclaredMethods():
             try:
                 if m.getName() == "createView":
                     self.hook_method(m, CreateViewHook())
+                elif m.getName() == "onResume":
+                    self.hook_method(m, ResumeHook())
             except Exception as e:
-                self.log(f"hook createView: {e}")
+                self.log(f"hook activity {m.getName()}: {e}")
 
         for m in AdapterCls.getDeclaredMethods():
             try:
@@ -545,9 +627,9 @@ class KupuProxyPlugin(BasePlugin):
                 elif name == "onBindViewHolder" and len(m.getParameterTypes()) == 2:
                     self.hook_method(m, BindHook())
             except Exception as e:
-                self.log(f"hook adapter {m.getName()}: {e}")
+                self.log(f"hook adapter {name}: {e}")
 
-        self.log("ProxyListActivity hooks OK (coexist with proxy_tools)")
+        self.log("ProxyListActivity hooks v1.2.0 (after-bind, end rows)")
 
     def _save_kupu_switch(self, enabled: bool):
         try:
