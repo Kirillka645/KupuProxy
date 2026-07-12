@@ -13,21 +13,36 @@ import socket
 import threading
 import time
 import traceback
+import weakref
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from base_plugin import BasePlugin, MenuItemData, MenuItemType
+from base_plugin import BasePlugin, MenuItemData, MenuItemType, MethodHook
 from android_utils import run_on_ui_thread
 from client_utils import get_last_fragment
 from ui.alert import AlertDialogBuilder
 from ui.settings import Divider, Header, Input, Switch, Text
 
 try:
+    from hook_utils import get_private_field
+except Exception:  # pragma: no cover
+    get_private_field = None  # type: ignore
+
+try:
     from ui.bulletin import BulletinHelper
 except Exception:  # pragma: no cover
     BulletinHelper = None  # type: ignore
+
+try:
+    from java import jclass, dynamic_proxy
+    from java.lang import Integer, Long
+except Exception:  # pragma: no cover
+    jclass = None  # type: ignore
+    dynamic_proxy = None  # type: ignore
+    Integer = None  # type: ignore
+    Long = None  # type: ignore
 
 
 # --- Plugin Metadata (AST-parsed, keep static) ---
@@ -35,13 +50,13 @@ __id__ = "kupu_proxy"
 __name__ = "KupuProxy"
 __description__ = (
     "Поиск и проверка MTProto-прокси (как KupuProxy Android).\n"
-    "На экране «Прокси» — 4-й switch **KupuProxy** (как нативные).\n"
+    "На экране «Прокси» — строка **KupuProxy** (TextCheckCell, как в Proxy Tools).\n"
     "Команды: `.kupu auto` · `.kupu chat` · `.kupu add` · `.kupu del` · `.kupu update`\n"
     "Источники: SoliSpirit, Yagami200, Kort, Argh94…\n"
     "Самообновление с GitHub."
 )
 __author__ = "@Kirillka645"
-__version__ = "1.1.5"
+__version__ = "1.1.6"
 __icon__ = "exteraPlugins/1"
 __min_version__ = "11.9.1"
 # 1.4.0 / 1.4.3.3 — ок; не требуем 1.4.3.10
@@ -224,10 +239,9 @@ class KupuProxyPlugin(BasePlugin):
         self._chat_id = None
         self._hooks = []
         self._ignore_native_trigger = False  # True пока сами пишем флаги
-        self._last_rotation = None
-        self._prefs_listener = None
-        self._injected_fragments = set()
-        self._kupu_switch_view = None
+        # extra rows in ProxyListActivity adapter (как proxy_tools):
+        # 0 shadow, 1 TextCheckCell KupuProxy, 2 TextSettingsCell auto, 3 shadow
+        self._KUPU_EXTRA_ROWS = 4
 
     # region lifecycle
 
@@ -238,7 +252,7 @@ class KupuProxyPlugin(BasePlugin):
                 MenuItemData(
                     menu_type=MenuItemType.DRAWER_MENU,
                     text="KupuProxy",
-                    subtext="4-й switch на экране прокси",
+                    subtext="Строка в меню прокси",
                     icon="msg_proxy",
                     on_click=self._on_drawer_click,
                     priority=50,
@@ -266,346 +280,262 @@ class KupuProxyPlugin(BasePlugin):
         except Exception as e:
             self.log(f"add_on_send_message_hook: {e}")
 
-        # 4-й switch «KupuProxy» + опционально реакция на автопереключение
-        self._hook_native_proxy_switches()
+        # Как proxy_tools: вшиваем строки в ListAdapter (TextCheckCell)
+        self._hook_proxy_list_ui()
 
         if self.get_setting("auto_update", True):
             threading.Thread(target=self._bg_check_update, daemon=True).start()
 
     def on_plugin_unload(self):
         self._scanning = False
-        try:
-            if self._prefs_listener is not None:
-                from org.telegram.messenger import ApplicationLoader
-                from android.content import Context
-
-                ctx = ApplicationLoader.applicationContext
-                prefs = ctx.getSharedPreferences("mainconfig", Context.MODE_PRIVATE)
-                prefs.unregisterOnSharedPreferenceChangeListener(self._prefs_listener)
-        except Exception:
-            pass
         self.log("KupuProxy unloaded")
 
     # endregion
 
-    # region 4th native-style switch "KupuProxy"
+    # region ProxyListActivity rows (как proxy_tools.plugin)
 
-    def _hook_native_proxy_switches(self):
-        """
-        4-я кнопка/switch «KupuProxy» в стиле нативных строк экрана прокси.
-        Вкл → скан + добавить рабочие + прокси + автопереключение.
-        """
-        self._last_rotation = self._is_rotation_enabled()
-        self._register_prefs_rotation_listener()
-        self._hook_proxy_list_activity()
-
-    def _is_rotation_enabled(self) -> bool:
-        try:
-            from org.telegram.messenger import SharedConfig
-
-            for name in (
-                "proxyRotationEnabled",
-                "proxyAutoSwitch",
-                "useProxyRotation",
-            ):
-                try:
-                    v = getattr(SharedConfig, name, None)
-                    if isinstance(v, bool):
-                        return v
-                except Exception:
-                    pass
-        except Exception:
-            pass
-        try:
-            from org.telegram.messenger import ApplicationLoader
-            from android.content import Context
-
-            ctx = ApplicationLoader.applicationContext
-            prefs = ctx.getSharedPreferences("mainconfig", Context.MODE_PRIVATE)
-            for key in (
-                "proxyRotationEnabled",
-                "proxy_rotation_enabled",
-                "proxyAutoSwitch",
-                "auto_proxy_switch",
-            ):
-                if prefs.contains(key) and prefs.getBoolean(key, False):
-                    return True
-        except Exception:
-            pass
-        return False
-
-    def _register_prefs_rotation_listener(self):
-        """Слушаем mainconfig — нативный switch пишет туда."""
-        try:
-            from org.telegram.messenger import ApplicationLoader
-            from android.content import Context, SharedPreferences
-
-            ctx = ApplicationLoader.applicationContext
-            prefs = ctx.getSharedPreferences("mainconfig", Context.MODE_PRIVATE)
-            plugin = self
-            rot_keys = {
-                "proxyRotationEnabled",
-                "proxy_rotation_enabled",
-                "proxyAutoSwitch",
-                "auto_proxy_switch",
-            }
-
-            listener = None
-            for imp in ("java", "com.chaquo.python"):
-                try:
-                    if imp == "java":
-                        from java import dynamic_proxy  # type: ignore
-                    else:
-                        from com.chaquo.python import dynamic_proxy  # type: ignore
-
-                    class PrefsListener(
-                        dynamic_proxy(SharedPreferences.OnSharedPreferenceChangeListener)
-                    ):
-                        def onSharedPreferenceChanged(self, sp, key):
-                            try:
-                                if key is None or str(key) not in rot_keys:
-                                    return
-                                if plugin._ignore_native_trigger:
-                                    return
-                                on = bool(sp.getBoolean(str(key), False))
-                                plugin._on_native_rotation_changed(on)
-                            except Exception as e:
-                                plugin.log(f"prefs listener: {e}")
-
-                    listener = PrefsListener()
-                    break
-                except Exception as e:
-                    self.log(f"prefs listener {imp}: {e}")
-
-            if listener is None:
-                return
-            prefs.registerOnSharedPreferenceChangeListener(listener)
-            self._prefs_listener = listener
-            self.log("native prefs listener OK")
-        except Exception as e:
-            self.log(f"register prefs: {e}\n{traceback.format_exc()}")
-
-    def _hook_proxy_list_activity(self):
-        """createView: вставить 4-й switch; onResume: edge автопереключения."""
-        class_names = (
-            "org.telegram.ui.ProxyListActivity",
-            "org.telegram.ui.ProxySettingsActivity",
-            "com.exteragram.messenger.ui.ProxyListActivity",
-        )
-        plugin = self
-        for cname in class_names:
+    def _pf(self, obj, name: str):
+        """get_private_field с fallbacks."""
+        if get_private_field is not None:
             try:
-                from java.lang import Class
-
-                clazz = Class.forName(cname)
-            except Exception:
-                continue
-            for m in clazz.getDeclaredMethods():
-                try:
-                    name = m.getName()
-                    if name not in ("createView", "onResume", "onItemClick", "didSelect"):
-                        continue
-
-                    def after_hook(param, _pname=name):
-                        try:
-                            fragment = param.thisObject
-                            if fragment is None:
-                                return
-
-                            def work():
-                                try:
-                                    if _pname == "createView":
-                                        plugin._inject_kupu_switch_row(fragment)
-                                        try:
-                                            view = fragment.getFragmentView()
-                                            if view is not None:
-                                                view.post(
-                                                    lambda: plugin._inject_kupu_switch_row(
-                                                        fragment
-                                                    )
-                                                )
-                                        except Exception:
-                                            pass
-                                    else:
-                                        if (
-                                            plugin._ignore_native_trigger
-                                            or plugin._scanning
-                                        ):
-                                            return
-                                        now = plugin._is_rotation_enabled()
-                                        prev = plugin._last_rotation
-                                        plugin._last_rotation = now
-                                        if now and prev is False:
-                                            plugin._on_native_rotation_changed(True)
-                                except Exception as e:
-                                    plugin.log(f"native check: {e}")
-
-                            run_on_ui_thread(work)
-                        except Exception as e:
-                            plugin.log(f"proxy act hook: {e}")
-
-                    self.hook_method(m, after=after_hook)
-                    self.log(f"hooked {cname}.{name}")
-                except Exception as e:
-                    self.log(f"hook {cname}: {e}")
-
-    def _inject_kupu_switch_row(self, fragment):
-        """4-я строка-switch «KupuProxy» в стиле нативных (текст + switch)."""
-        try:
-            fid = id(fragment)
-            if fid in self._injected_fragments:
-                return
-
-            TAG = "kupu_native_switch_row_v1"
-            lv = None
-            for attr in ("listView", "listview", "recyclerListView"):
-                lv = getattr(fragment, attr, None)
-                if lv is not None:
-                    break
-            if lv is None:
-                return
-            try:
-                if lv.findViewWithTag(TAG) is not None:
-                    self._injected_fragments.add(fid)
-                    return
+                return get_private_field(obj, name)
             except Exception:
                 pass
-
-            from android.widget import LinearLayout, TextView, Switch
-            from android.view import ViewGroup, Gravity, View
-            from android.util import TypedValue
-
-            try:
-                act = fragment.getParentActivity()
-            except Exception:
-                act = None
-            ctx = act if act is not None else lv.getContext()
-            density = ctx.getResources().getDisplayMetrics().density
-
-            try:
-                from org.telegram.ui.ActionBar import Theme
-
-                bg = Theme.getColor(Theme.key_windowBackgroundWhite)
-                text_c = Theme.getColor(Theme.key_windowBackgroundWhiteBlackText)
-                divider_c = Theme.getColor(Theme.key_divider)
-            except Exception:
-                bg = 0xFFFFFFFF
-                text_c = 0xFF000000
-                divider_c = 0x1F000000
-
-            wrap = LinearLayout(ctx)
-            wrap.setTag(TAG)
-            wrap.setOrientation(LinearLayout.VERTICAL)
-            wrap.setBackgroundColor(bg)
-            wrap.setLayoutParams(
-                ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                )
-            )
-
-            top_div = View(ctx)
-            top_div.setBackgroundColor(divider_c)
-            wrap.addView(
-                top_div,
-                LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, max(1, int(0.5 * density))
-                ),
-            )
-
-            row = LinearLayout(ctx)
-            row.setOrientation(LinearLayout.HORIZONTAL)
-            row.setGravity(Gravity.CENTER_VERTICAL)
-            hpad = int(16 * density)
-            vpad = int(14 * density)
-            row.setPadding(hpad, vpad, hpad, vpad)
-            row.setBackgroundColor(bg)
-            row.setMinimumHeight(int(50 * density))
-
-            label = TextView(ctx)
-            label.setText("KupuProxy")
-            label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16)
-            label.setTextColor(text_c)
-            label.setSingleLine(True)
-            label.setGravity(Gravity.CENTER_VERTICAL)
-            lp_l = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0)
-            lp_l.rightMargin = int(12 * density)
-            row.addView(label, lp_l)
-
-            sw = Switch(ctx)
-            enabled = bool(self.get_setting("kupu_switch_on", False))
-            sw.setChecked(enabled)
-
-            plugin = self
-            for imp in ("java", "com.chaquo.python"):
-                try:
-                    if imp == "java":
-                        from java import dynamic_proxy  # type: ignore
-                    else:
-                        from com.chaquo.python import dynamic_proxy  # type: ignore
-                    from android.widget import CompoundButton
-
-                    class Listener(dynamic_proxy(CompoundButton.OnCheckedChangeListener)):
-                        def onCheckedChanged(self, button, is_checked):
-                            try:
-                                plugin._on_kupu_switch(bool(is_checked))
-                            except Exception as e:
-                                plugin.log(f"kupu switch: {e}")
-
-                    sw.setOnCheckedChangeListener(Listener())
-                    break
-                except Exception as e:
-                    self.log(f"switch listener {imp}: {e}")
-
-            row.addView(sw)
-            wrap.addView(row)
-
-            bot_div = View(ctx)
-            bot_div.setBackgroundColor(divider_c)
-            wrap.addView(
-                bot_div,
-                LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, max(1, int(0.5 * density))
-                ),
-            )
-
-            self._kupu_switch_view = sw
-            attached = False
-
-            # header = над 3 свитчами (не перекрывает, не ломает вёрстку)
-            if hasattr(lv, "addHeaderView"):
-                try:
-                    lv.addHeaderView(wrap, None, False)
-                    attached = True
-                except TypeError:
-                    try:
-                        lv.addHeaderView(wrap)
-                        attached = True
-                    except Exception as e:
-                        self.log(f"addHeaderView: {e}")
-                except Exception as e:
-                    self.log(f"addHeaderView: {e}")
-
-            if not attached and hasattr(lv, "addFooterView"):
-                try:
-                    lv.addFooterView(wrap, None, False)
-                    attached = True
-                except TypeError:
-                    try:
-                        lv.addFooterView(wrap)
-                        attached = True
-                    except Exception as e:
-                        self.log(f"addFooterView: {e}")
-                except Exception as e:
-                    self.log(f"addFooterView: {e}")
-
-            if attached:
-                self._injected_fragments.add(fid)
-                self.log("KupuProxy 4th switch attached")
-            else:
-                self.log("KupuProxy switch: failed to attach")
+        try:
+            return getattr(obj, name, None)
         except Exception:
-            self.log(f"inject switch: {traceback.format_exc()}")
+            return None
+
+    def _hook_proxy_list_ui(self):
+        """
+        Встраиваем KupuProxy в нативный список прокси через адаптер
+        (тот же приём, что proxy_tools: +rows, TextCheckCell, OnItemClick).
+        """
+        if jclass is None or MethodHook is None or Integer is None:
+            self.log("hook_proxy_list_ui: java/MethodHook unavailable")
+            return
+
+        try:
+            ActivityCls = jclass("java.lang.Class").forName(
+                "org.telegram.ui.ProxyListActivity"
+            )
+            AdapterCls = jclass("java.lang.Class").forName(
+                "org.telegram.ui.ProxyListActivity$ListAdapter"
+            )
+        except Exception as e:
+            self.log(f"ProxyListActivity classes: {e}")
+            return
+
+        extra = self._KUPU_EXTRA_ROWS
+        plugin_ref = weakref.ref(self)
+
+        class GetItemCountHook(MethodHook):
+            def after_hooked_method(self, param):
+                try:
+                    prev = int(param.getResult())
+                    param.setResult(Integer(prev + extra))
+                except Exception:
+                    pass
+
+        def _outer_field(obj, name):
+            if get_private_field is not None:
+                try:
+                    return get_private_field(obj, name)
+                except Exception:
+                    pass
+            return getattr(obj, name, None)
+
+        class GetItemViewTypeHook(MethodHook):
+            def before_hooked_method(self, param):
+                try:
+                    act = _outer_field(param.thisObject, "this$0")
+                    if not act:
+                        return
+                    orig_count = int(_outer_field(act, "rowCount"))
+                    pos = int(param.args[0])
+                    if pos < orig_count:
+                        return
+                    cpos = pos - orig_count
+                    # 0,3 = ShadowSectionCell (type 0)
+                    # 1 = TextCheckCell (type 3)
+                    # 2 = TextSettingsCell (type 1) — «Сделать всё»
+                    if cpos in (0, 3):
+                        param.setResult(Integer(0))
+                    elif cpos == 1:
+                        param.setResult(Integer(3))
+                    else:
+                        param.setResult(Integer(1))
+                except Exception:
+                    pass
+
+        class GetItemIdHook(MethodHook):
+            def before_hooked_method(self, param):
+                try:
+                    act = _outer_field(param.thisObject, "this$0")
+                    if not act:
+                        return
+                    orig_count = int(_outer_field(act, "rowCount"))
+                    pos = int(param.args[0])
+                    if pos >= orig_count and Long is not None:
+                        param.setResult(Long(90000 + pos))
+                except Exception:
+                    pass
+
+        class BindHook(MethodHook):
+            def before_hooked_method(self, param):
+                try:
+                    act = _outer_field(param.thisObject, "this$0")
+                    if not act:
+                        return
+                    orig_count = int(_outer_field(act, "rowCount"))
+                    pos = int(param.args[1])
+                    if pos >= orig_count:
+                        param.setResult(None)
+                except Exception:
+                    pass
+
+            def after_hooked_method(self, param):
+                plugin = plugin_ref()
+                if not plugin:
+                    return
+                try:
+                    act = _outer_field(param.thisObject, "this$0")
+                    if not act:
+                        return
+                    orig_count = int(_outer_field(act, "rowCount"))
+                    pos = int(param.args[1])
+                    if pos < orig_count:
+                        return
+                    cpos = pos - orig_count
+                    cell = param.args[0].itemView
+                    Theme = jclass("org.telegram.ui.ActionBar.Theme")
+
+                    if cpos == 1:
+                        on = bool(plugin.get_setting("kupu_switch_on", False))
+                        try:
+                            cell.setTextAndCheck("KupuProxy", on, True)
+                        except Exception:
+                            try:
+                                cell.setTextAndCheck("KupuProxy", on, False)
+                            except Exception as e:
+                                plugin.log(f"setTextAndCheck: {e}")
+                        try:
+                            cell.setBackgroundColor(
+                                Theme.getColor(Theme.key_windowBackgroundWhite)
+                            )
+                        except Exception:
+                            pass
+                    elif cpos == 2:
+                        try:
+                            cell.setText("Сделать всё", False)
+                        except Exception as e:
+                            plugin.log(f"setText: {e}")
+                        try:
+                            cell.setBackgroundColor(
+                                Theme.getColor(Theme.key_windowBackgroundWhite)
+                            )
+                        except Exception:
+                            pass
+                except Exception as e:
+                    try:
+                        plugin.log(f"BindHook: {e}")
+                    except Exception:
+                        pass
+
+        class CreateViewHook(MethodHook):
+            def after_hooked_method(self, param):
+                plugin = plugin_ref()
+                if not plugin:
+                    return
+                act = param.thisObject
+                try:
+                    lv = _outer_field(act, "listView")
+                    if lv is None:
+                        return
+                    old_listener = _outer_field(lv, "onItemClickListener")
+                    try:
+                        if old_listener and "KupuProxyClick" in str(
+                            old_listener.getClass().getName()
+                        ):
+                            return
+                    except Exception:
+                        pass
+
+                    ListenerBase = jclass(
+                        "org.telegram.ui.Components.RecyclerListView$OnItemClickListener"
+                    )
+
+                    class KupuProxyClick(dynamic_proxy(ListenerBase)):
+                        def __init__(self, old, pref, activity):
+                            super().__init__()
+                            self.old = old
+                            self.pref = pref
+                            self.activity = activity
+
+                        def onItemClick(self, view, pos):
+                            p = self.pref()
+                            if not p:
+                                return
+                            try:
+                                orig_count = int(
+                                    _outer_field(self.activity, "rowCount")
+                                )
+                            except Exception:
+                                if self.old:
+                                    self.old.onItemClick(view, pos)
+                                return
+
+                            if pos >= orig_count:
+                                cpos = pos - orig_count
+                                if cpos == 1:
+                                    cur = bool(p.get_setting("kupu_switch_on", False))
+                                    nxt = not cur
+                                    p._save_kupu_switch(nxt)
+                                    try:
+                                        view.setChecked(nxt)
+                                    except Exception:
+                                        pass
+                                    if nxt:
+                                        p._bulletin("KupuProxy: ищу рабочие…")
+                                        p._one_tap_setup(None)
+                                    else:
+                                        p._bulletin("KupuProxy выкл")
+                                elif cpos == 2:
+                                    p._save_kupu_switch(True)
+                                    p._one_tap_setup(None)
+                            else:
+                                if self.old:
+                                    self.old.onItemClick(view, pos)
+
+                    lv.setOnItemClickListener(
+                        KupuProxyClick(old_listener, plugin_ref, act)
+                    )
+                    plugin.log("ProxyListActivity click listener OK")
+                except Exception as e:
+                    plugin.log(f"CreateViewHook: {e}\n{traceback.format_exc()}")
+
+        for m in ActivityCls.getDeclaredMethods():
+            try:
+                if m.getName() == "createView":
+                    self.hook_method(m, CreateViewHook())
+            except Exception as e:
+                self.log(f"hook createView: {e}")
+
+        for m in AdapterCls.getDeclaredMethods():
+            try:
+                name = m.getName()
+                if name == "getItemCount":
+                    self.hook_method(m, GetItemCountHook())
+                elif name == "getItemViewType":
+                    self.hook_method(m, GetItemViewTypeHook())
+                elif name == "getItemId":
+                    self.hook_method(m, GetItemIdHook())
+                elif name == "onBindViewHolder" and len(m.getParameterTypes()) == 2:
+                    self.hook_method(m, BindHook())
+            except Exception as e:
+                self.log(f"hook adapter {m.getName()}: {e}")
+
+        self.log("ProxyListActivity adapter hooks installed")
 
     def _save_kupu_switch(self, enabled: bool):
         try:
@@ -619,38 +549,38 @@ class KupuProxyPlugin(BasePlugin):
 
             ctx = ApplicationLoader.applicationContext
             prefs = ctx.getSharedPreferences("kupu_proxy_plugin", Context.MODE_PRIVATE)
-            prefs.edit().putBoolean("kupu_switch_on", enabled).apply()
+            prefs.edit().putBoolean("kupu_switch_on", bool(enabled)).apply()
         except Exception:
             pass
 
-    def _on_kupu_switch(self, enabled: bool):
-        """4-й switch KupuProxy вкл/выкл."""
-        self._save_kupu_switch(enabled)
-        if not enabled:
-            self._bulletin("KupuProxy выкл")
-            return
-        if self._scanning:
-            self._bulletin("Уже выполняется…")
-            return
-        self.log("KupuProxy switch ON → auto setup")
-        self._bulletin("KupuProxy: ищу рабочие прокси…")
-        self._one_tap_setup(None)
+    def _safe_refresh_proxy_list(self):
+        """Перерисовать список прокси (как proxy_tools._safe_refresh)."""
 
-    def _on_native_rotation_changed(self, enabled: bool):
-        """Пользователь крутанул нативное «Автопереключение прокси»."""
-        prev = self._last_rotation
-        self._last_rotation = enabled
-        if not enabled:
-            return
-        if prev is True:
-            return  # уже было вкл
-        if self._scanning or self._ignore_native_trigger:
-            return
-        if not self.get_setting("auto_on_rotation", False):
-            return
-        self.log("native Автопереключение ON → auto setup")
-        self._bulletin("KupuProxy: автопереключение вкл — ищу рабочие прокси…")
-        self._one_tap_setup(None)
+        def go():
+            try:
+                frag = get_last_fragment()
+                if frag is None:
+                    return
+                name = str(frag.getClass().getName())
+                if "ProxyList" not in name and "ProxySettings" not in name:
+                    # всё равно пробуем adapter
+                    pass
+                for attr in ("listAdapter", "adapter"):
+                    ad = self._pf(frag, attr)
+                    if ad is not None and hasattr(ad, "notifyDataSetChanged"):
+                        ad.notifyDataSetChanged()
+                        break
+                for meth in ("updateRows",):
+                    m = getattr(frag, meth, None)
+                    if callable(m):
+                        try:
+                            m()
+                        except Exception:
+                            pass
+            except Exception as e:
+                self.log(f"refresh list: {e}")
+
+        run_on_ui_thread(go)
 
     def _one_tap_setup(self, dialog_id: Optional[int]):
         """
@@ -740,6 +670,11 @@ class KupuProxyPlugin(BasePlugin):
                 # 5-6 enable + rotation + best current
                 best = results[0]
                 self._enable_proxy_system(best)
+                self._save_kupu_switch(True)
+                try:
+                    self._safe_refresh_proxy_list()
+                except Exception:
+                    pass
 
                 summary = (
                     f"✅ KupuProxy готово!\n"
@@ -902,8 +837,8 @@ class KupuProxyPlugin(BasePlugin):
                 default=False,
             ),
             Text(
-                text="Настройки → Прокси → switch «KupuProxy»",
-                subtext="4-я кнопка рядом с нативными",
+                text="Настройки → Прокси → внизу списка «KupuProxy»",
+                subtext="Нативная TextCheckCell (как Proxy Tools)",
             ),
             Divider(),
             Header(text="Скан"),
@@ -930,8 +865,8 @@ class KupuProxyPlugin(BasePlugin):
             Divider(),
             Header(text="Как пользоваться"),
             Text(
-                text="Настройки → Прокси → KupuProxy",
-                subtext="4-й switch — вкл = скан + рабочие + автопереключение",
+                text="Настройки → Прокси → KupuProxy / Сделать всё",
+                subtext="Строки встроены в список (TextCheckCell)",
             ),
             Text(text="`.kupu auto` — то же из чата"),
             Text(text="`.kupu scan` / `.kupu chat` / `.kupu add` / `.kupu del`"),
@@ -1048,10 +983,9 @@ class KupuProxyPlugin(BasePlugin):
                 builder.set_message(
                     f"v{__version__}\n"
                     f"Рабочих в кэше: {n}\n\n"
-                    f"Настройки → Прокси → switch **KupuProxy**\n"
-                    f"(4-я кнопка, как нативные)\n\n"
-                    f"Вкл = скан → добавить рабочие →\n"
-                    f"прокси + автопереключение.\n\n"
+                    f"Настройки → Прокси → прокрути вниз:\n"
+                    f"• **KupuProxy** (switch)\n"
+                    f"• **Сделать всё**\n\n"
                     f"Или `.kupu auto` в чате."
                 )
                 builder.set_positive_button(
@@ -1159,7 +1093,7 @@ class KupuProxyPlugin(BasePlugin):
                 "🔌 **KupuProxy** v"
                 + __version__
                 + "\n\n"
-                + "⚡ Настройки → Прокси → switch **KupuProxy** (4-я кнопка)\n"
+                + "⚡ Настройки → Прокси → **KupuProxy** / **Сделать всё**\n"
                 + "`.kupu auto` — то же из чата\n\n"
                 + "`.kupu scan` — скачать + проверить\n"
                 + "`.kupu chat` — все рабочие ссылки в чат\n"
