@@ -40,7 +40,7 @@ __description__ = (
     "Самообновление с GitHub Releases."
 )
 __author__ = "@Kirillka645"
-__version__ = "1.0.2"
+__version__ = "1.0.3"
 __icon__ = "exteraPlugins/1"
 __min_version__ = "11.9.1"
 # 1.4.0 / 1.4.3.3 — ок; не требуем 1.4.3.10
@@ -359,24 +359,57 @@ class KupuProxyPlugin(BasePlugin):
         run_on_ui_thread(go)
 
     def _reply(self, dialog_id: int, text: str):
-        """Best-effort reply in chat; falls back to bulletin."""
+        """Best-effort reply in chat (chunks if long); falls back to bulletin."""
+        chunks = self._chunk_text(text, 3500)
+        ok_any = False
+        for chunk in chunks:
+            if self._send_text(dialog_id, chunk):
+                ok_any = True
+            else:
+                break
+        if not ok_any:
+            self._bulletin(text[:180])
+
+    @staticmethod
+    def _chunk_text(text: str, limit: int = 3500) -> List[str]:
+        if len(text) <= limit:
+            return [text]
+        parts: List[str] = []
+        cur: List[str] = []
+        size = 0
+        for line in text.split("\n"):
+            add = len(line) + 1
+            if cur and size + add > limit:
+                parts.append("\n".join(cur))
+                cur = [line]
+                size = add
+            else:
+                cur.append(line)
+                size += add
+        if cur:
+            parts.append("\n".join(cur))
+        return parts or [text[:limit]]
+
+    def _send_text(self, dialog_id: int, text: str) -> bool:
         try:
             from client_utils import send_message
 
-            # send_message signature may vary across SDK versions
-            try:
-                send_message(dialog_id, text)
-                return
-            except TypeError:
-                pass
-            try:
-                send_message(text, dialog_id)
-                return
-            except Exception:
-                pass
+            for args in (
+                (dialog_id, text),
+                (text, dialog_id),
+                (int(dialog_id), str(text)),
+            ):
+                try:
+                    send_message(*args)
+                    return True
+                except TypeError:
+                    continue
+                except Exception as e:
+                    self.log(f"send_message{args[:1]}: {e}")
+                    continue
         except Exception as e:
-            self.log(f"send_message failed: {e}")
-        self._bulletin(text[:180])
+            self.log(f"send_message import/fail: {e}")
+        return False
 
     def _on_drawer_click(self, context: Dict[str, Any]):
         self._show_main_dialog()
@@ -509,13 +542,22 @@ class KupuProxyPlugin(BasePlugin):
                 + __version__
                 + "\n\n"
                 + "`.kupu scan` — скачать + проверить\n"
-                + "`.kupu list` / `.kupu top` — рабочие\n"
+                + "`.kupu chat` — все рабочие ссылки в чат\n"
+                + "`.kupu add` — добавить все рабочие в прокси Telegram\n"
+                + "`.kupu del` — удалить нерабочие из списка прокси\n"
+                + "`.kupu list` / `.kupu top` — кратко\n"
                 + "`.kupu use N` — подключить №N\n"
                 + "`.kupu update` — обновить плагин\n"
                 + "`.kupu menu` — диалог\n",
             )
         elif cmd == "scan":
             self._start_scan(dialog_id)
+        elif cmd == "chat":
+            self._cmd_chat(dialog_id)
+        elif cmd == "add":
+            self._cmd_add(dialog_id)
+        elif cmd == "del":
+            self._cmd_del(dialog_id)
         elif cmd in ("list", "top"):
             self._cmd_list(dialog_id)
         elif cmd == "use":
@@ -540,8 +582,82 @@ class KupuProxyPlugin(BasePlugin):
         ]
         self._reply(
             dialog_id,
-            f"✅ Рабочие ({len(items)}):\n" + "\n".join(lines) + "\n\n`.kupu use 1`",
+            f"✅ Рабочие ({len(items)}):\n"
+            + "\n".join(lines)
+            + "\n\n`.kupu chat` — все ссылки\n`.kupu use 1`",
         )
+
+    def _cmd_chat(self, dialog_id: int):
+        """Выдать в чат все рабочие прокси полными tg:// ссылками."""
+        with self._lock:
+            items = list(self._results)
+        if not items:
+            self._reply(dialog_id, "Пока пусто. Сначала `.kupu scan`")
+            return
+
+        header = f"🔌 KupuProxy — рабочие ({len(items)}):\n\n"
+        lines = []
+        for i, p in enumerate(items):
+            url = p.get("url") or ""
+            if not url.startswith("tg://"):
+                url = (
+                    f"tg://proxy?server={p['server']}&port={p['port']}"
+                    f"&secret={p.get('secret', '')}"
+                )
+            lines.append(f"{i+1}. {url}  ({p['ping']} ms)")
+
+        body = header + "\n".join(lines)
+        self._reply(dialog_id, body)
+        self._bulletin(f"Отправлено {len(items)} прокси в чат")
+
+    def _cmd_add(self, dialog_id: int):
+        """Добавить все рабочие из скана в список прокси Telegram."""
+        with self._lock:
+            items = list(self._results)
+        if not items:
+            self._reply(dialog_id, "Пока пусто. Сначала `.kupu scan`")
+            return
+
+        def work():
+            try:
+                added, skipped, err = self._add_all_to_telegram(items)
+                msg = (
+                    f"✅ В список прокси Telegram:\n"
+                    f"• добавлено: **{added}**\n"
+                    f"• уже были: **{skipped}**"
+                )
+                if err:
+                    msg += f"\n• ошибки: {err}"
+                msg += "\n\nНастройки → Данные и память → Прокси"
+                self._reply(dialog_id, msg)
+                self._bulletin(f"Добавлено прокси: {added}")
+            except Exception as e:
+                self.log(traceback.format_exc())
+                self._reply(dialog_id, f"Ошибка add: {e}")
+
+        self._reply(dialog_id, f"➕ Добавляю {len(items)} рабочих в список прокси…")
+        threading.Thread(target=work, daemon=True).start()
+
+    def _cmd_del(self, dialog_id: int):
+        """Удалить нерабочие прокси из списка Telegram (TCP-check)."""
+
+        def work():
+            try:
+                checked, deleted, kept = self._delete_dead_from_telegram()
+                self._reply(
+                    dialog_id,
+                    f"🗑 Проверка списка прокси Telegram:\n"
+                    f"• проверено: **{checked}**\n"
+                    f"• удалено (недоступны): **{deleted}**\n"
+                    f"• оставлено: **{kept}**",
+                )
+                self._bulletin(f"Удалено нерабочих: {deleted}")
+            except Exception as e:
+                self.log(traceback.format_exc())
+                self._reply(dialog_id, f"Ошибка del: {e}")
+
+        self._reply(dialog_id, "🧹 Проверяю сохранённые прокси, удаляю мёртвые…")
+        threading.Thread(target=work, daemon=True).start()
 
     def _cmd_use(self, dialog_id: int, n: int):
         with self._lock:
@@ -756,17 +872,10 @@ class KupuProxyPlugin(BasePlugin):
         from org.telegram.tgnet import ConnectionsManager
         from org.telegram.messenger import NotificationCenter
 
-        proxy = SharedConfig.ProxyInfo(
-            info["server"],
-            int(info["port"]),
-            "",
-            "",
-            info["secret"],
-        )
+        proxy = self._make_proxy_info(info["server"], int(info["port"]), info["secret"])
         SharedConfig.addProxy(proxy)
         SharedConfig.currentProxy = proxy
         SharedConfig.saveProxyList()
-        # enable proxy
         try:
             SharedConfig.proxyEnabled = True
         except Exception:
@@ -782,13 +891,175 @@ class KupuProxyPlugin(BasePlugin):
             )
         except Exception as e:
             self.log(f"setProxySettings: {e}")
+        self._notify_proxy_changed()
+        self._bulletin(f"Прокси {info['server']}:{info['port']} включён")
+
+    def _make_proxy_info(self, server: str, port: int, secret: str):
+        from org.telegram.messenger import SharedConfig
+
+        # ProxyInfo(address, port, username, password, secret)
         try:
+            return SharedConfig.ProxyInfo(server, int(port), "", "", secret or "")
+        except Exception:
+            # older constructors
+            p = SharedConfig.ProxyInfo()
+            p.address = server
+            p.port = int(port)
+            p.username = ""
+            p.password = ""
+            p.secret = secret or ""
+            return p
+
+    def _proxy_key(self, address: str, port: int, secret: str = "") -> str:
+        return f"{(address or '').lower()}:{(port or 0)}:{(secret or '')}"
+
+    def _iter_proxy_list(self):
+        from org.telegram.messenger import SharedConfig
+
+        pl = SharedConfig.proxyList
+        items = []
+        try:
+            # ArrayList
+            n = pl.size()
+            for i in range(n):
+                items.append(pl.get(i))
+        except Exception:
+            try:
+                for p in pl:
+                    items.append(p)
+            except Exception as e:
+                self.log(f"proxyList iterate: {e}")
+        return items
+
+    def _existing_proxy_keys(self) -> set:
+        keys = set()
+        for p in self._iter_proxy_list():
+            try:
+                addr = getattr(p, "address", None) or ""
+                port = int(getattr(p, "port", 0) or 0)
+                secret = getattr(p, "secret", None) or ""
+                keys.add(self._proxy_key(addr, port, secret))
+            except Exception:
+                continue
+        return keys
+
+    def _add_all_to_telegram(self, items: List[Dict[str, Any]]) -> Tuple[int, int, int]:
+        """Returns (added, skipped, errors)."""
+        from org.telegram.messenger import SharedConfig
+
+        existing = self._existing_proxy_keys()
+        added = 0
+        skipped = 0
+        errors = 0
+
+        def do_add():
+            nonlocal added, skipped, errors
+            for it in items:
+                try:
+                    server = it["server"]
+                    port = int(it["port"])
+                    secret = it.get("secret") or ""
+                    key = self._proxy_key(server, port, secret)
+                    if key in existing:
+                        skipped += 1
+                        continue
+                    proxy = self._make_proxy_info(server, port, secret)
+                    SharedConfig.addProxy(proxy)
+                    existing.add(key)
+                    added += 1
+                except Exception as e:
+                    errors += 1
+                    self.log(f"addProxy fail: {e}")
+            try:
+                SharedConfig.saveProxyList()
+            except Exception as e:
+                self.log(f"saveProxyList: {e}")
+            self._notify_proxy_changed()
+
+        # SharedConfig usually must be touched on UI thread
+        done = threading.Event()
+        err_box: List[Exception] = []
+
+        def go():
+            try:
+                do_add()
+            except Exception as e:
+                err_box.append(e)
+            finally:
+                done.set()
+
+        run_on_ui_thread(go)
+        done.wait(60)
+        if err_box:
+            raise err_box[0]
+        return added, skipped, errors
+
+    def _delete_dead_from_telegram(self) -> Tuple[int, int, int]:
+        """TCP-check all saved proxies; delete dead. Returns (checked, deleted, kept)."""
+        from org.telegram.messenger import SharedConfig
+
+        timeout = self._float_setting("timeout_sec", 2.0, 0.8, 5.0)
+        proxies = self._iter_proxy_list()
+        checked = 0
+        dead = []
+
+        for p in proxies:
+            try:
+                addr = getattr(p, "address", None) or ""
+                port = int(getattr(p, "port", 0) or 0)
+                if not addr or port <= 0:
+                    continue
+                checked += 1
+                ping = tcp_ping(addr, port, timeout)
+                if ping < 0:
+                    dead.append(p)
+            except Exception as e:
+                self.log(f"check saved proxy: {e}")
+
+        deleted = 0
+        done = threading.Event()
+        err_box: List[Exception] = []
+
+        def go():
+            nonlocal deleted
+            try:
+                for p in dead:
+                    try:
+                        SharedConfig.deleteProxy(p)
+                        deleted += 1
+                    except Exception:
+                        # fallback remove + save
+                        try:
+                            SharedConfig.proxyList.remove(p)
+                            deleted += 1
+                        except Exception as e2:
+                            self.log(f"deleteProxy: {e2}")
+                try:
+                    SharedConfig.saveProxyList()
+                except Exception:
+                    pass
+                self._notify_proxy_changed()
+            except Exception as e:
+                err_box.append(e)
+            finally:
+                done.set()
+
+        run_on_ui_thread(go)
+        done.wait(60)
+        if err_box:
+            raise err_box[0]
+        kept = max(0, checked - deleted)
+        return checked, deleted, kept
+
+    def _notify_proxy_changed(self):
+        try:
+            from org.telegram.messenger import NotificationCenter
+
             NotificationCenter.getGlobalInstance().postNotificationName(
                 NotificationCenter.proxySettingsChanged
             )
-        except Exception:
-            pass
-        self._bulletin(f"Прокси {info['server']}:{info['port']} включён")
+        except Exception as e:
+            self.log(f"proxySettingsChanged: {e}")
 
     # endregion
 
