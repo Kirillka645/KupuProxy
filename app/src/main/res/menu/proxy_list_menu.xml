@@ -2,8 +2,16 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
     <item
+        android:id="@+id/action_filter"
+        android:title="Фильтр пинга"
+        app:showAsAction="never" />
+    <item
         android:id="@+id/action_copy_all"
         android:title="@string/copy_all"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_share"
+        android:title="Поделиться"
         app:showAsAction="never" />
     <item
         android:id="@+id/action_about"

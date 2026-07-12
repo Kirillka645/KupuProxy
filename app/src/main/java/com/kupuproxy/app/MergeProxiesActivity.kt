@@ -43,30 +43,49 @@ class MergeProxiesActivity : AppCompatActivity() {
     private fun startMerging() {
         scope.launch {
             try {
-                updateStatus("Загрузка всех источников…", 0, 0)
+                updateStatus("Загрузка через CDN-зеркала…", 0, 0)
 
-                val all = ProxyManager.fetchAllSources { index, total, count ->
-                    updateStatus("Источник $index из $total…", index, total, count)
+                val result = ProxyManager.fetchAllSources(this@MergeProxiesActivity) { index, total, name, count ->
+                    updateStatus("[$index/$total] $name", index, total, count)
                 }
 
-                if (all.isEmpty()) {
+                if (result.proxies.isEmpty()) {
+                    // permanent fallbacks
+                    val seed = ProxyCache.loadSeedFromAssets(this@MergeProxiesActivity)
+                    if (seed.isEmpty()) {
+                        withContext(Dispatchers.Main) {
+                            showError("Не удалось загрузить. Используйте Seed на главном экране.")
+                        }
+                        return@launch
+                    }
+                    updateStatus("Сеть недоступна — seed из APK", 0, seed.size)
+                    val file = ProxyManager.saveProxiesEverywhere(this@MergeProxiesActivity, seed)
                     withContext(Dispatchers.Main) {
-                        showError("Не удалось загрузить прокси")
+                        if (file != null) {
+                            showSuccessDialog(seed.size, file.name, fromSeed = true)
+                        } else {
+                            showError("Сохранено в app-кэш (${seed.size}), Downloads недоступен")
+                        }
                     }
                     return@launch
                 }
 
-                updateStatus("Удаление дубликатов…", 0, all.size)
-                val unique = ProxyManager.deduplicateProxies(all)
-
-                updateStatus("Сохранение файла…", 0, unique.size)
-                val file = ProxyManager.saveProxiesToFile(unique)
+                updateStatus("Сохранение (${result.proxies.size})…", 0, result.proxies.size)
+                val file = ProxyManager.saveProxiesEverywhere(
+                    this@MergeProxiesActivity,
+                    result.proxies
+                )
 
                 withContext(Dispatchers.Main) {
                     if (file != null) {
-                        showSuccessDialog(unique.size, file.name)
+                        showSuccessDialog(
+                            result.proxies.size,
+                            file.name,
+                            mirrors = result.usedMirrors.size
+                        )
                     } else {
-                        showError("Не удалось сохранить файл")
+                        // still saved to app cache
+                        showSuccessDialog(result.proxies.size, "app cache", mirrors = result.usedMirrors.size)
                     }
                 }
             } catch (e: Exception) {
@@ -86,12 +105,8 @@ class MergeProxiesActivity : AppCompatActivity() {
         runOnUiThread {
             tvStatus.text = message
             if (total > 0) {
-                progressBar.progress = (current * 100) / total
-                tvCount.text = if (count > 0) {
-                    "Получено: $count"
-                } else {
-                    "Шаг: $current / $total"
-                }
+                progressBar.progress = ((current * 100f) / total).toInt().coerceIn(0, 100)
+                tvCount.text = if (count > 0) "Получено с источника: $count" else "Шаг $current / $total"
             } else {
                 progressBar.progress = 0
                 tvCount.text = ""
@@ -99,10 +114,20 @@ class MergeProxiesActivity : AppCompatActivity() {
         }
     }
 
-    private fun showSuccessDialog(count: Int, fileName: String) {
+    private fun showSuccessDialog(
+        count: Int,
+        fileName: String,
+        fromSeed: Boolean = false,
+        mirrors: Int = 0
+    ) {
+        val extra = buildString {
+            if (fromSeed) append("\n(из seed APK — сеть не ответила)")
+            if (mirrors > 0) append("\nЗеркал OK: $mirrors")
+            append("\n\nТакже сохранено в локальный кэш приложения (навсегда, пока не очистите данные).")
+        }
         MaterialAlertDialogBuilder(this)
             .setTitle("Готово")
-            .setMessage("Сохранено $count уникальных прокси\n\nФайл: $fileName\nПапка: Downloads")
+            .setMessage("Сохранено $count уникальных прокси\n\nФайл: $fileName\nПапка: Downloads$extra")
             .setPositiveButton("Закрыть") { _, _ -> finish() }
             .setCancelable(false)
             .show()

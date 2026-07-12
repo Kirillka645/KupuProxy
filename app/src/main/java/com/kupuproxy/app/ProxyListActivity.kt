@@ -24,7 +24,9 @@ class ProxyListActivity : AppCompatActivity() {
     private lateinit var tvSubtitle: TextView
 
     private var proxiesList: List<ProxyWithPing> = emptyList()
+    private var filteredList: List<ProxyWithPing> = emptyList()
     private var sourceName: String = ""
+    private var maxPingFilter = Int.MAX_VALUE
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -47,15 +49,13 @@ class ProxyListActivity : AppCompatActivity() {
                 ?: emptyList()
         }
 
+        filteredList = proxiesList
         tvSubtitle = findViewById(R.id.tvListSubtitle)
-        val avg = if (proxiesList.isNotEmpty()) {
-            proxiesList.map { it.pingMs }.average().toInt()
-        } else 0
-        tvSubtitle.text = "${proxiesList.size} рабочих · средний пинг ${avg} ms"
+        updateSubtitle()
 
         recyclerView = findViewById(R.id.recyclerView)
         recyclerView.layoutManager = LinearLayoutManager(this)
-        recyclerView.adapter = ProxyAdapter(this, proxiesList)
+        recyclerView.adapter = ProxyAdapter(this, filteredList)
 
         fabCopyTop10 = findViewById(R.id.fabCopyTop10)
         fabCopyTop10.setOnClickListener { copyTop10Proxies() }
@@ -65,6 +65,19 @@ class ProxyListActivity : AppCompatActivity() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() = finish()
         })
+    }
+
+    private fun updateSubtitle() {
+        val list = filteredList
+        val withPing = list.filter { it.pingMs > 0 }
+        val avg = if (withPing.isNotEmpty()) withPing.map { it.pingMs }.average().toInt() else 0
+        val profile = list.firstOrNull()?.profileLabel.orEmpty()
+        tvSubtitle.text = buildString {
+            append("${list.size} шт.")
+            if (avg > 0) append(" · ср. $avg ms")
+            if (profile.isNotBlank()) append(" · $profile")
+            if (maxPingFilter < Int.MAX_VALUE) append(" · фильтр ≤ ${maxPingFilter}ms")
+        }
     }
 
     private fun setupToolbarMenu() {
@@ -79,13 +92,52 @@ class ProxyListActivity : AppCompatActivity() {
                     copyAllProxies()
                     true
                 }
+                R.id.action_filter -> {
+                    showFilterDialog()
+                    true
+                }
+                R.id.action_share -> {
+                    shareList()
+                    true
+                }
                 else -> false
             }
         }
     }
 
+    private fun showFilterDialog() {
+        val options = arrayOf("Все", "≤ 100 ms", "≤ 200 ms", "≤ 300 ms", "≤ 500 ms")
+        val values = intArrayOf(Int.MAX_VALUE, 100, 200, 300, 500)
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Фильтр по пингу")
+            .setItems(options) { _, which ->
+                maxPingFilter = values[which]
+                filteredList = if (maxPingFilter == Int.MAX_VALUE) {
+                    proxiesList
+                } else {
+                    proxiesList.filter { it.pingMs in 1..maxPingFilter }
+                }
+                recyclerView.adapter = ProxyAdapter(this, filteredList)
+                updateSubtitle()
+            }
+            .show()
+    }
+
+    private fun shareList() {
+        val text = formatWithFooter(filteredList.take(50))
+        startActivity(
+            Intent.createChooser(
+                Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_TEXT, text)
+                },
+                "Поделиться прокси"
+            )
+        )
+    }
+
     private fun copyTop10Proxies() {
-        val top = proxiesList.take(10)
+        val top = filteredList.take(10)
         if (top.isEmpty()) {
             Toast.makeText(this, R.string.no_proxies, Toast.LENGTH_SHORT).show()
             return
@@ -95,16 +147,19 @@ class ProxyListActivity : AppCompatActivity() {
     }
 
     private fun copyAllProxies() {
-        if (proxiesList.isEmpty()) {
+        if (filteredList.isEmpty()) {
             Toast.makeText(this, R.string.no_proxies, Toast.LENGTH_SHORT).show()
             return
         }
-        copyToClipboard(formatWithFooter(proxiesList))
-        Toast.makeText(this, "Скопировано ${proxiesList.size} прокси", Toast.LENGTH_SHORT).show()
+        copyToClipboard(formatWithFooter(filteredList))
+        Toast.makeText(this, "Скопировано ${filteredList.size} прокси", Toast.LENGTH_SHORT).show()
     }
 
     private fun formatWithFooter(proxies: List<ProxyWithPing>): String {
-        val body = proxies.mapIndexed { i, p -> "${i + 1}. ${p.url}" }.joinToString("\n")
+        val body = proxies.mapIndexed { i, p ->
+            if (p.pingMs > 0) "${i + 1}. ${p.url}  (${p.pingMs}ms)"
+            else "${i + 1}. ${p.url}"
+        }.joinToString("\n")
         return "$body\n\nKupuProxy — https://github.com/${BuildConfig.GITHUB_REPO}"
     }
 
@@ -117,8 +172,9 @@ class ProxyListActivity : AppCompatActivity() {
         MaterialAlertDialogBuilder(this)
             .setTitle("KupuProxy v${BuildConfig.VERSION_NAME}")
             .setMessage(
-                "Парсер и проверка MTProto-прокси для Telegram.\n\n" +
-                    "GitHub: https://github.com/${BuildConfig.GITHUB_REPO}"
+                "MTProto-прокси для Telegram.\n" +
+                    "CDN-зеркала, профили Wi‑Fi/LTE, seed и кэш.\n\n" +
+                    "https://github.com/${BuildConfig.GITHUB_REPO}"
             )
             .setPositiveButton("GitHub") { _, _ ->
                 openUrl("https://github.com/${BuildConfig.GITHUB_REPO}")

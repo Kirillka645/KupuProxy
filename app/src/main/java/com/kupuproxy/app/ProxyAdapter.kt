@@ -8,6 +8,7 @@ import android.net.Uri
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.ContextCompat
@@ -38,20 +39,42 @@ class ProxyAdapter(
         private val tvPing: TextView = itemView.findViewById(R.id.tvPing)
         private val btnCopy: MaterialButton = itemView.findViewById(R.id.btnCopy)
         private val btnConnect: MaterialButton = itemView.findViewById(R.id.btnConnect)
+        private val btnFavorite: ImageView = itemView.findViewById(R.id.btnFavorite)
 
         fun bind(proxy: ProxyWithPing, position: Int) {
-            val info = ProxyManager.parseProxyUrl(proxy.url) ?: return
-
+            val info = ProxyManager.parseProxyUrl(proxy.url)
             tvIndex.text = (position + 1).toString()
-            tvHost.text = "${info.server}:${info.port}"
-            tvPing.text = context.getString(R.string.ping_format, proxy.pingMs)
-
-            val pingColor = when {
-                proxy.pingMs < 100 -> R.color.ping_excellent
-                proxy.pingMs < 300 -> R.color.ping_good
-                else -> R.color.ping_slow
+            tvHost.text = if (info != null) {
+                "${info.server}:${info.port}"
+            } else {
+                proxy.url.take(40)
             }
-            tvPing.setTextColor(ContextCompat.getColor(context, pingColor))
+
+            if (proxy.pingMs > 0) {
+                tvPing.text = context.getString(R.string.ping_format, proxy.pingMs)
+                val pingColor = when {
+                    proxy.pingMs < 100 -> R.color.ping_excellent
+                    proxy.pingMs < 300 -> R.color.ping_good
+                    else -> R.color.ping_slow
+                }
+                tvPing.setTextColor(ContextCompat.getColor(context, pingColor))
+                tvPing.visibility = View.VISIBLE
+            } else {
+                tvPing.text = "★"
+                tvPing.setTextColor(ContextCompat.getColor(context, R.color.kupu_primary))
+            }
+
+            refreshStar(proxy.url)
+
+            btnFavorite.setOnClickListener {
+                val added = ProxyCache.toggleFavorite(context, proxy.url)
+                refreshStar(proxy.url)
+                Toast.makeText(
+                    context,
+                    if (added) "В избранном" else "Убрано из избранного",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
 
             btnCopy.setOnClickListener {
                 val clipboard =
@@ -60,21 +83,22 @@ class ProxyAdapter(
                 Toast.makeText(context, R.string.proxy_copied, Toast.LENGTH_SHORT).show()
             }
 
-            btnConnect.setOnClickListener {
+            val openTg = {
                 try {
                     context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(proxy.url)))
                 } catch (_: Exception) {
                     Toast.makeText(context, R.string.telegram_missing, Toast.LENGTH_LONG).show()
                 }
             }
+            btnConnect.setOnClickListener { openTg() }
+            cardView.setOnClickListener { openTg() }
+        }
 
-            cardView.setOnClickListener {
-                try {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(proxy.url)))
-                } catch (_: Exception) {
-                    Toast.makeText(context, R.string.telegram_missing, Toast.LENGTH_LONG).show()
-                }
-            }
+        private fun refreshStar(url: String) {
+            val fav = ProxyCache.isFavorite(context, url)
+            btnFavorite.setImageResource(
+                if (fav) R.drawable.ic_star else R.drawable.ic_star_outline
+            )
         }
     }
 }

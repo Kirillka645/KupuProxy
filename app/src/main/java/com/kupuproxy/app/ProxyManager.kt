@@ -1,6 +1,7 @@
 package com.kupuproxy.app
 
 import android.content.ContentResolver
+import android.content.Context
 import android.net.Uri
 import android.os.Environment
 import java.io.File
@@ -10,78 +11,240 @@ import java.net.Socket
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
 object ProxyManager {
-    private val client = OkHttpClient()
-    private const val MAX_PROXIES = 10_000
 
-    val SOURCES = listOf(
+    private const val MAX_PROXIES = 15_000
+
+    private val client: OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(12, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
+        .followRedirects(true)
+        .build()
+
+    /**
+     * Источники + зеркала (jsDelivr / githack / ghproxy) — если raw.githubusercontent
+     * режется на мобильной сети, подхватываем CDN.
+     */
+    data class Source(
+        val id: String,
+        val name: String,
+        val description: String,
+        val urls: List<String>,
+        val region: String = "ALL" // RU, EU, ALL
+    )
+
+    val SOURCES: List<Source> = listOf(
         Source(
-            name = "Россия (Kort0881)",
-            url = "https://raw.githubusercontent.com/kort0881/telegram-proxy-collector/main/proxy_ru.txt",
-            prefix = "tg://proxy?"
+            id = "solispirit",
+            name = "SoliSpirit Mega",
+            description = "~250+ авто-обновляемых MTProto",
+            urls = listOf(
+                "https://fastly.jsdelivr.net/gh/SoliSpirit/mtproto@master/all_proxies.txt",
+                "https://gcore.jsdelivr.net/gh/SoliSpirit/mtproto@master/all_proxies.txt",
+                "https://raw.githack.com/SoliSpirit/mtproto/master/all_proxies.txt",
+                "https://rawcdn.githack.com/SoliSpirit/mtproto/master/all_proxies.txt",
+                "https://ghproxy.net/https://raw.githubusercontent.com/SoliSpirit/mtproto/master/all_proxies.txt",
+                "https://raw.githubusercontent.com/SoliSpirit/mtproto/master/all_proxies.txt"
+            )
         ),
         Source(
-            name = "Европа (Kort0881)",
-            url = "https://raw.githubusercontent.com/kort0881/telegram-proxy-collector/main/proxy_eu.txt",
-            prefix = "tg://proxy?"
+            id = "kort_all",
+            name = "Kort All",
+            description = "RU + EU комбайн",
+            urls = listOf(
+                "https://cdn.jsdelivr.net/gh/kort0881/telegram-proxy-collector@main/proxy_all.txt",
+                "https://fastly.jsdelivr.net/gh/kort0881/telegram-proxy-collector@main/proxy_all.txt",
+                "https://raw.githack.com/kort0881/telegram-proxy-collector/main/proxy_all.txt",
+                "https://ghproxy.net/https://raw.githubusercontent.com/kort0881/telegram-proxy-collector/main/proxy_all.txt",
+                "https://raw.githubusercontent.com/kort0881/telegram-proxy-collector/main/proxy_all.txt"
+            )
         ),
         Source(
+            id = "kort_ru",
+            name = "Россия (Kort)",
+            description = "Маскировка под RU-сервисы",
+            region = "RU",
+            urls = listOf(
+                "https://cdn.jsdelivr.net/gh/kort0881/telegram-proxy-collector@main/proxy_ru.txt",
+                "https://fastly.jsdelivr.net/gh/kort0881/telegram-proxy-collector@main/proxy_ru.txt",
+                "https://raw.githack.com/kort0881/telegram-proxy-collector/main/proxy_ru.txt",
+                "https://raw.githubusercontent.com/kort0881/telegram-proxy-collector/main/proxy_ru.txt"
+            )
+        ),
+        Source(
+            id = "kort_eu",
+            name = "Европа (Kort)",
+            description = "Маскировка под Google/CF",
+            region = "EU",
+            urls = listOf(
+                "https://cdn.jsdelivr.net/gh/kort0881/telegram-proxy-collector@main/proxy_eu.txt",
+                "https://fastly.jsdelivr.net/gh/kort0881/telegram-proxy-collector@main/proxy_eu.txt",
+                "https://raw.githack.com/kort0881/telegram-proxy-collector/main/proxy_eu.txt",
+                "https://raw.githubusercontent.com/kort0881/telegram-proxy-collector/main/proxy_eu.txt"
+            )
+        ),
+        Source(
+            id = "surfboard",
             name = "SurfboardV2ray",
-            url = "https://raw.githubusercontent.com/Surfboardv2ray/TGProto/refs/heads/main/proxies-tested.txt",
-            prefix = "https://t.me/proxy?"
+            description = "Большой список + tested",
+            urls = listOf(
+                "https://cdn.jsdelivr.net/gh/Surfboardv2ray/TGProto@main/proxies.txt",
+                "https://cdn.jsdelivr.net/gh/Surfboardv2ray/TGProto@main/proxies-tested.txt",
+                "https://fastly.jsdelivr.net/gh/Surfboardv2ray/TGProto@main/proxies.txt",
+                "https://raw.githack.com/Surfboardv2ray/TGProto/main/proxies.txt",
+                "https://raw.githubusercontent.com/Surfboardv2ray/TGProto/main/proxies-tested.txt"
+            )
+        ),
+        Source(
+            id = "aliilapro",
+            name = "ALIILAPRO",
+            description = "Ежедневный список",
+            urls = listOf(
+                "https://cdn.jsdelivr.net/gh/ALIILAPRO/MTProtoProxy@main/mtproto.txt",
+                "https://fastly.jsdelivr.net/gh/ALIILAPRO/MTProtoProxy@main/mtproto.txt",
+                "https://raw.githack.com/ALIILAPRO/MTProtoProxy/main/mtproto.txt",
+                "https://raw.githubusercontent.com/ALIILAPRO/MTProtoProxy/main/mtproto.txt"
+            )
         )
     )
 
-    data class Source(
-        val name: String,
-        val url: String,
-        val prefix: String
+    private val LINK_REGEX = Regex(
+        """(?:tg://(?:proxy|socks)|https?://t\.me/(?:proxy|socks))\?[^\s<>"'`)\]#,]+""",
+        RegexOption.IGNORE_CASE
     )
 
+    suspend fun fetchSource(source: Source): Pair<List<String>, String?> =
+        withContext(Dispatchers.IO) {
+            for (url in source.urls) {
+                try {
+                    val body = downloadText(url) ?: continue
+                    val parsed = parseProxyLinks(body)
+                    if (parsed.isNotEmpty()) {
+                        return@withContext parsed to url
+                    }
+                } catch (_: Exception) {
+                }
+            }
+            emptyList<String>() to null
+        }
+
     suspend fun fetchAllSources(
-        onProgress: (sourceIndex: Int, total: Int, count: Int) -> Unit
-    ): List<String> = withContext(Dispatchers.IO) {
-        val allProxies = mutableListOf<String>()
+        context: Context? = null,
+        onProgress: (sourceIndex: Int, total: Int, name: String, count: Int) -> Unit = { _, _, _, _ -> }
+    ): FetchResult = withContext(Dispatchers.IO) {
+        val all = LinkedHashSet<String>()
+        val hits = linkedMapOf<String, Int>()
+        val mirrors = mutableListOf<String>()
+
         SOURCES.forEachIndexed { index, source ->
-            try {
-                val proxies = fetchProxies(source.url, source.prefix)
-                allProxies.addAll(proxies)
-                onProgress(index + 1, SOURCES.size, proxies.size)
-            } catch (_: Exception) {
-                onProgress(index + 1, SOURCES.size, 0)
+            val (list, mirror) = fetchSource(source)
+            hits[source.name] = list.size
+            all.addAll(list)
+            if (mirror != null) mirrors.add("${source.name} ← $mirror")
+            onProgress(index + 1, SOURCES.size, source.name, list.size)
+        }
+
+        var fromCache = false
+        var fromSeed = false
+
+        if (all.size < 50 && context != null) {
+            val cached = ProxyCache.loadRawList(context)
+            if (cached.isNotEmpty()) {
+                all.addAll(cached)
+                fromCache = true
             }
         }
-        allProxies
+
+        if (all.size < 50 && context != null) {
+            val seed = ProxyCache.loadSeedFromAssets(context)
+            if (seed.isNotEmpty()) {
+                all.addAll(seed)
+                fromSeed = true
+            }
+        }
+
+        val unique = deduplicateProxies(all.toList())
+        if (context != null && unique.isNotEmpty()) {
+            ProxyCache.saveRawList(context, unique)
+        }
+
+        FetchResult(
+            proxies = unique,
+            sourceHits = hits,
+            usedMirrors = mirrors,
+            fromCache = fromCache,
+            fromSeed = fromSeed
+        )
     }
 
-    suspend fun fetchProxies(url: String, urlPrefix: String): List<String> =
-        withContext(Dispatchers.IO) {
-            try {
-                val request = Request.Builder().url(url).build()
-                val response = client.newCall(request).execute()
-                if (!response.isSuccessful) return@withContext emptyList()
+    suspend fun fetchSourceById(sourceId: String, context: Context? = null): List<String> {
+        val source = SOURCES.find { it.id == sourceId } ?: return emptyList()
+        val (list, _) = fetchSource(source)
+        if (list.isNotEmpty()) {
+            context?.let { ProxyCache.saveRawList(it, list) }
+            return deduplicateProxies(list)
+        }
+        // fallback cascade
+        context?.let {
+            val cache = ProxyCache.loadRawList(it)
+            if (cache.isNotEmpty()) return cache
+            val seed = ProxyCache.loadSeedFromAssets(it)
+            if (seed.isNotEmpty()) return seed
+        }
+        return emptyList()
+    }
 
-                val body = response.body?.string().orEmpty()
-                body.lines()
-                    .map { it.trim() }
-                    .filter { it.isNotBlank() && it.startsWith(urlPrefix) }
-                    .map { convertToTgFormat(it, urlPrefix) }
-            } catch (_: Exception) {
-                emptyList()
+    private fun downloadText(url: String): String? {
+        val request = Request.Builder()
+            .url(url)
+            .header("User-Agent", "KupuProxy/1.1 Android")
+            .header("Accept", "text/plain,*/*")
+            .build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) return null
+            return response.body?.string()
+        }
+    }
+
+    fun parseProxyLinks(body: String): List<String> {
+        val result = LinkedHashSet<String>()
+        LINK_REGEX.findAll(body).forEach { match ->
+            val raw = match.value.trim().trimEnd(')', ']', ',', ';', '"', '\'')
+            val normalized = convertToTgFormat(raw)
+            if (normalized.startsWith("tg://proxy?") || normalized.startsWith("tg://socks?")) {
+                result.add(normalized)
             }
         }
+        // also accept plain server=... lines if any
+        body.lineSequence().forEach { line ->
+            val t = line.trim()
+            if (t.startsWith("tg://proxy?") || t.startsWith("tg://socks?")) {
+                result.add(t)
+            }
+        }
+        return result.toList().take(MAX_PROXIES)
+    }
 
-    private fun convertToTgFormat(url: String, originalPrefix: String): String {
-        return when (originalPrefix) {
-            "https://t.me/proxy?" -> "tg://proxy?" + url.removePrefix("https://t.me/proxy?")
-            "https://t.me/socks?" -> "tg://socks?" + url.removePrefix("https://t.me/socks?")
+    private fun convertToTgFormat(url: String): String {
+        return when {
+            url.startsWith("https://t.me/proxy?", ignoreCase = true) ->
+                "tg://proxy?" + url.substringAfter("?")
+            url.startsWith("http://t.me/proxy?", ignoreCase = true) ->
+                "tg://proxy?" + url.substringAfter("?")
+            url.startsWith("https://t.me/socks?", ignoreCase = true) ->
+                "tg://socks?" + url.substringAfter("?")
+            url.startsWith("http://t.me/socks?", ignoreCase = true) ->
+                "tg://socks?" + url.substringAfter("?")
             else -> url
         }
     }
@@ -94,8 +257,8 @@ object ProxyManager {
             val paramsPart = when {
                 url.startsWith("tg://proxy?") -> url.removePrefix("tg://proxy?")
                 url.startsWith("tg://socks?") -> url.removePrefix("tg://socks?")
-                url.startsWith("https://t.me/proxy?") -> url.removePrefix("https://t.me/proxy?")
-                url.startsWith("https://t.me/socks?") -> url.removePrefix("https://t.me/socks?")
+                url.startsWith("https://t.me/proxy?") -> url.substringAfter("?")
+                url.startsWith("https://t.me/socks?") -> url.substringAfter("?")
                 else -> return url
             }
 
@@ -125,67 +288,52 @@ object ProxyManager {
         }
     }
 
-    suspend fun saveProxiesToFile(proxies: List<String>): File? = withContext(Dispatchers.IO) {
-        try {
-            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-            val fileName = "kupuproxy_$timestamp.txt"
-            val downloadsDir =
-                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-            if (!downloadsDir.exists()) downloadsDir.mkdirs()
-
-            val file = File(downloadsDir, fileName)
-            FileOutputStream(file).use { output ->
-                proxies.forEach { proxy ->
-                    output.write((proxy + "\n").toByteArray())
-                }
-            }
-            file
-        } catch (_: Exception) {
-            null
+    /**
+     * Для LTE берём перемешанную выборку до maxToCheck,
+     * для Wi‑Fi — до maxToCheck без жёсткого shuffle приоритета.
+     */
+    fun prepareForProfile(proxies: List<String>, settings: ProfileSettings): List<String> {
+        val unique = deduplicateProxies(proxies)
+        if (unique.size <= settings.maxToCheck) return unique
+        return if (settings.mode == NetworkProfileMode.MOBILE) {
+            unique.shuffled().take(settings.maxToCheck)
+        } else {
+            unique.take(settings.maxToCheck)
         }
     }
 
-    suspend fun loadProxiesFromFile(contentResolver: ContentResolver, uri: Uri): List<String> =
-        withContext(Dispatchers.IO) {
-            try {
-                val proxies = mutableListOf<String>()
-                contentResolver.openInputStream(uri)?.use { input ->
-                    input.bufferedReader().useLines { lines ->
-                        lines
-                            .map { it.trim() }
-                            .filter { it.isNotBlank() }
-                            .take(MAX_PROXIES)
-                            .forEach { proxies.add(it) }
-                    }
-                }
-                proxies
-            } catch (_: Exception) {
-                emptyList()
-            }
-        }
-
     suspend fun checkProxiesPingParallel(
         proxies: List<String>,
-        batchSize: Int = 50,
+        settings: ProfileSettings,
+        profileLabel: String = settings.label,
         onProgress: (processed: Int, total: Int, working: Int) -> Unit
     ): List<ProxyWithPing> = withContext(Dispatchers.IO) {
         val results = mutableListOf<ProxyWithPing>()
+        val mutex = Mutex()
         val total = proxies.size
         var processed = 0
         var working = 0
 
-        proxies.chunked(batchSize).forEach { batch ->
+        proxies.chunked(settings.batchSize).forEach { batch ->
             val batchResults = batch.map { proxyUrl ->
                 async {
                     val info = parseProxyUrl(proxyUrl) ?: return@async null
-                    val ping = measurePing(info.server, info.port.toIntOrNull() ?: 443)
-                    if (ping in 1 until 5000) ProxyWithPing(proxyUrl, ping) else null
+                    val ping = measurePing(
+                        info.server,
+                        info.port.toIntOrNull() ?: 443,
+                        settings.connectTimeoutMs
+                    )
+                    if (ping in 1 until settings.maxPingMs) {
+                        ProxyWithPing(proxyUrl, ping, profileLabel)
+                    } else null
                 }
             }.awaitAll().filterNotNull()
 
-            results.addAll(batchResults)
-            working += batchResults.size
-            processed += batch.size
+            mutex.withLock {
+                results.addAll(batchResults)
+                working += batchResults.size
+                processed += batch.size
+            }
 
             withContext(Dispatchers.Main) {
                 onProgress(processed, total, working)
@@ -195,12 +343,12 @@ object ProxyManager {
         results.sortedBy { it.pingMs }
     }
 
-    private suspend fun measurePing(server: String, port: Int): Int = withContext(Dispatchers.IO) {
+    private fun measurePing(server: String, port: Int, timeoutMs: Int): Int {
         var socket: Socket? = null
-        try {
+        return try {
             val start = System.currentTimeMillis()
             socket = Socket()
-            socket.connect(InetSocketAddress(server, port), 3000)
+            socket.connect(InetSocketAddress(server, port), timeoutMs)
             (System.currentTimeMillis() - start).toInt()
         } catch (_: Exception) {
             -1
@@ -217,8 +365,8 @@ object ProxyManager {
             val cleanUrl = when {
                 url.startsWith("tg://proxy?") -> url.removePrefix("tg://proxy?")
                 url.startsWith("tg://socks?") -> url.removePrefix("tg://socks?")
-                url.startsWith("https://t.me/proxy?") -> url.removePrefix("https://t.me/proxy?")
-                url.startsWith("https://t.me/socks?") -> url.removePrefix("https://t.me/socks?")
+                url.contains("t.me/proxy?") -> url.substringAfter("?")
+                url.contains("t.me/socks?") -> url.substringAfter("?")
                 else -> return null
             }
 
@@ -239,4 +387,47 @@ object ProxyManager {
             null
         }
     }
+
+    suspend fun saveProxiesToFile(proxies: List<String>): File? = withContext(Dispatchers.IO) {
+        try {
+            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+            val fileName = "kupuproxy_$timestamp.txt"
+            val downloadsDir =
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            if (!downloadsDir.exists()) downloadsDir.mkdirs()
+            val file = File(downloadsDir, fileName)
+            FileOutputStream(file).use { output ->
+                proxies.forEach { proxy ->
+                    output.write((proxy + "\n").toByteArray())
+                }
+            }
+            file
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /** Сохраняет и в Downloads, и в вечный app-cache. */
+    suspend fun saveProxiesEverywhere(context: Context, proxies: List<String>): File? {
+        ProxyCache.saveRawList(context, proxies)
+        return saveProxiesToFile(proxies)
+    }
+
+    suspend fun loadProxiesFromFile(contentResolver: ContentResolver, uri: Uri): List<String> =
+        withContext(Dispatchers.IO) {
+            try {
+                contentResolver.openInputStream(uri)?.use { input ->
+                    val body = input.bufferedReader().readText()
+                    parseProxyLinks(body).ifEmpty {
+                        body.lineSequence()
+                            .map { it.trim() }
+                            .filter { it.isNotBlank() }
+                            .take(MAX_PROXIES)
+                            .toList()
+                    }
+                } ?: emptyList()
+            } catch (_: Exception) {
+                emptyList()
+            }
+        }
 }

@@ -26,6 +26,7 @@ class CheckFileActivity : AppCompatActivity() {
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var fileUri: Uri? = null
+    private var profileMode = NetworkProfileMode.AUTO
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -36,6 +37,14 @@ class CheckFileActivity : AppCompatActivity() {
         } else {
             @Suppress("DEPRECATION")
             intent.getParcelableExtra(MainActivity.EXTRA_FILE_URI)
+        }
+
+        profileMode = try {
+            NetworkProfileMode.valueOf(
+                intent.getStringExtra(MainActivity.EXTRA_PROFILE) ?: NetworkProfileMode.AUTO.name
+            )
+        } catch (_: Exception) {
+            NetworkProfileMode.AUTO
         }
 
         tvStatus = findViewById(R.id.tvCheckStatus)
@@ -57,6 +66,8 @@ class CheckFileActivity : AppCompatActivity() {
             return
         }
 
+        val settings = ProfileSettings.forMode(profileMode, this)
+
         scope.launch {
             updateStatus("Чтение файла…", 0, 0)
             val proxies = ProxyManager.loadProxiesFromFile(contentResolver, uri)
@@ -68,9 +79,24 @@ class CheckFileActivity : AppCompatActivity() {
                 return@launch
             }
 
-            updateStatus("Проверка прокси…", 0, proxies.size)
-            val checked = ProxyManager.checkProxiesPingParallel(proxies, 50) { processed, total, working ->
-                updateStatus("Проверка прокси…", processed, total, working)
+            val prepared = ProxyManager.prepareForProfile(proxies, settings)
+            updateStatus("Проверка (${settings.label})…", 0, prepared.size)
+
+            val checked = ProxyManager.checkProxiesPingParallel(
+                prepared,
+                settings,
+                settings.label
+            ) { processed, total, working ->
+                updateStatus("Проверка (${settings.label})…", processed, total, working)
+            }
+
+            if (checked.isNotEmpty()) {
+                val effective = if (settings.mode == NetworkProfileMode.MOBILE) {
+                    NetworkProfileMode.MOBILE
+                } else {
+                    NetworkProfileMode.WIFI
+                }
+                ProxyCache.saveWorking(this@CheckFileActivity, effective, checked)
             }
 
             withContext(Dispatchers.Main) {
@@ -78,7 +104,7 @@ class CheckFileActivity : AppCompatActivity() {
                     startActivity(
                         Intent(this@CheckFileActivity, ProxyListActivity::class.java).apply {
                             putExtra(MainActivity.EXTRA_PROXIES, ArrayList(checked))
-                            putExtra(MainActivity.EXTRA_SOURCE_NAME, "Из файла")
+                            putExtra(MainActivity.EXTRA_SOURCE_NAME, "Из файла · ${settings.label}")
                         }
                     )
                     finish()
@@ -98,7 +124,7 @@ class CheckFileActivity : AppCompatActivity() {
         runOnUiThread {
             tvStatus.text = message
             if (total > 0) {
-                progressBar.progress = (current * 100) / total
+                progressBar.progress = ((current * 100f) / total).toInt().coerceIn(0, 100)
                 tvCount.text = if (working > 0) {
                     "Проверено: $current / $total · Работает: $working"
                 } else {

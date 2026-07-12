@@ -1,70 +1,34 @@
-# KupuProxy
+﻿# KupuProxy
 
-Современное Android-приложение для поиска, проверки и подключения **MTProto-прокси** к Telegram.
+Android-приложение для поиска и проверки **MTProto-прокси** Telegram.
 
-![Platform](https://img.shields.io/badge/Android-24%2B-green)
-![Kotlin](https://img.shields.io/badge/Kotlin-100%25-blue)
-![License](https://img.shields.io/badge/license-MIT-lightgrey)
+**https://github.com/Kirillka645/KupuProxy**
 
-## Возможности
+## v1.1.0
 
-- Загрузка прокси из открытых источников:
-  - **Kort0881** — Россия (`proxy_ru.txt`) и Европа (`proxy_eu.txt`)
-  - **SurfboardV2ray** — большой проверенный список
-- Параллельная проверка доступности (до 50 соединений)
-- Сортировка по пингу (зелёный / жёлтый / красный)
-- Добавление прокси в Telegram одним тапом
-- Копирование топ-10 или всего списка
-- Объединение всех источников в `.txt` (Downloads)
-- Проверка собственного файла с `tg://proxy` ссылками
-- Светлая / тёмная / системная тема
-- Проверка обновлений через GitHub Releases
+- **Мега-скан** — 6+ источников, ~500–1000 прокси после дедупа
+- **CDN-зеркала** (jsDelivr, githack, ghproxy) — работает, когда raw.githubusercontent режется на LTE
+- **Профили Wi‑Fi / LTE / Авто** — разный batch, таймаут и лимит проверки
+- **Seed ~580** вшит в APK навсегда (офлайн)
+- **Локальный кэш** + «Последние Wi‑Fi / LTE»
+- **Избранное ⭐**, фильтр пинга, шаринг
+- Скачивание в Downloads **и** app-кэш
 
-## Дизайн
+## Источники
 
-- Material 3
-- Тёмно-бирюзовая палитра Kupu
-- Карточки с мягкими радиусами, hero-блок, индикаторы пинга
+- SoliSpirit/mtproto
+- kort0881 (RU / EU / All)
+- Surfboardv2ray TGProto
+- ALIILAPRO/MTProtoProxy
 
 ## Сборка
 
 ```bash
-./gradlew assembleDebug
+./gradlew assembleRelease
 ```
-
-APK: `app/build/outputs/apk/debug/app-debug.apk`
-
-Откройте проект в **Android Studio** (Hedgehog+ / Ladybug+) и запустите на устройстве.
-
-## Источники данных
-
-Списки берутся из:
-
-- https://github.com/kort0881/telegram-proxy-collector
-- https://github.com/Surfboardv2ray/TGProto
 
 ## Дисклеймер
 
-Работоспособность серверов **как прокси Telegram** не гарантируется.  
-Проверяется TCP-доступность хоста:порта. Используйте на свой страх и риск.
-
-## Структура
-
-```
-app/src/main/java/com/kupuproxy/app/
-├── MainActivity.kt
-├── ProxyLoadingActivity.kt
-├── ProxyListActivity.kt
-├── ProxyAdapter.kt
-├── ProxyManager.kt
-├── CheckFileActivity.kt
-├── MergeProxiesActivity.kt
-├── Models.kt
-└── updater/
-    ├── UpdateChecker.kt
-    └── GitHubRelease.kt
-```
-
-## Лицензия
+TCP-пинг ≠ гарантия работы в Telegram. Используйте на свой страх и риск.
 
 MIT

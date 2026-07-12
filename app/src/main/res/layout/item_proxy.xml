@@ -53,12 +53,23 @@
                 android:id="@+id/tvPing"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_marginEnd="6dp"
                 android:background="@drawable/bg_ping_badge"
                 android:paddingHorizontal="10dp"
                 android:paddingVertical="4dp"
                 android:text="45 ms"
                 android:textSize="12sp"
                 android:textStyle="bold" />
+
+            <ImageView
+                android:id="@+id/btnFavorite"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Избранное"
+                android:padding="6dp"
+                android:src="@drawable/ic_star_outline"
+                app:tint="@color/kupu_primary" />
         </LinearLayout>
 
         <LinearLayout
