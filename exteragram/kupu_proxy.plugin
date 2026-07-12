@@ -56,7 +56,7 @@ __description__ = (
     "Самообновление с GitHub."
 )
 __author__ = "@Kirillka645"
-__version__ = "1.1.7"
+__version__ = "1.1.8"
 __icon__ = "exteraPlugins/1"
 __min_version__ = "11.9.1"
 # 1.4.0 / 1.4.3.3 — ок; не требуем 1.4.3.10
@@ -594,11 +594,7 @@ class KupuProxyPlugin(BasePlugin):
             return
 
         self._scanning = True
-        msg0 = "KupuProxy: делаю всё… скан → добавление → автопереключение"
-        if dialog_id:
-            self._reply(dialog_id, "⚡ " + msg0)
-        else:
-            self._bulletin(msg0)
+        self._bulletin("KupuProxy: делаю всё… скан → добавление → автопереключение")
 
         def work():
             try:
@@ -695,10 +691,8 @@ class KupuProxyPlugin(BasePlugin):
         threading.Thread(target=work, daemon=True).start()
 
     def _finish_one_tap(self, dialog_id: Optional[int], ok: bool, text: str):
-        if dialog_id:
-            self._reply(dialog_id, text)
-        else:
-            self._bulletin(text[:200], error=not ok)
+        # в чат не пишем — только bulletin / диалог
+        self._bulletin(text[:200], error=not ok)
 
         def dlg():
             try:
@@ -1216,64 +1210,74 @@ class KupuProxyPlugin(BasePlugin):
             dialog_id = self._current_dialog_id()
             self.log(f"handle_command: resolved dialog_id={dialog_id}")
 
+        # В чат пишем ТОЛЬКО по `.kupu chat`. Остальное — bulletin.
         if cmd in ("help", "h", "?"):
-            self._reply(
-                dialog_id,
-                "🔌 **KupuProxy** v"
-                + __version__
-                + "\n\n"
-                + "⚡ Настройки → Прокси → **KupuProxy** / **Сделать всё**\n"
-                + "`.kupu auto` — то же из чата\n\n"
-                + "`.kupu scan` — скачать + проверить\n"
-                + "`.kupu chat` — все рабочие ссылки в чат\n"
-                + "`.kupu add` — добавить все рабочие в прокси Telegram\n"
-                + "`.kupu del` — удалить нерабочие из списка прокси\n"
-                + "`.kupu list` / `.kupu top` — кратко\n"
-                + "`.kupu use N` — подключить №N\n"
-                + "`.kupu update` — обновить плагин\n"
-                + "`.kupu menu` — диалог\n",
+            self._bulletin(
+                f"KupuProxy v{__version__}: .kupu scan / chat / add / del / auto / use N"
             )
         elif cmd in ("auto", "all", "go", "setup"):
-            self._one_tap_setup(dialog_id)
+            self._one_tap_setup(None)
         elif cmd == "scan":
-            self._start_scan(dialog_id)
+            self._start_scan(None)
         elif cmd == "chat":
             self._cmd_chat(dialog_id)
         elif cmd == "add":
-            self._cmd_add(dialog_id)
+            self._cmd_add()
         elif cmd == "del":
-            self._cmd_del(dialog_id)
+            self._cmd_del()
         elif cmd in ("list", "top"):
-            self._cmd_list(dialog_id)
+            self._cmd_list()
         elif cmd == "use":
             n = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 1
-            self._cmd_use(dialog_id, n)
+            self._cmd_use(n)
         elif cmd == "update":
-            self._do_self_update(force=True, dialog_id=dialog_id)
+            self._do_self_update(force=True, dialog_id=None)
         elif cmd == "menu":
             self._show_main_dialog()
         else:
-            self._reply(dialog_id, f"Неизвестная команда: {cmd}\n`.kupu help`")
+            self._bulletin(f"Неизвестно: {cmd}. .kupu help", error=True)
 
-    def _cmd_list(self, dialog_id: int):
+    @staticmethod
+    def _proxy_tme_url(p: Dict[str, Any]) -> str:
+        """https://t.me/proxy?server=...&port=...&secret=..."""
+        url = str(p.get("url") or "")
+        if "t.me/proxy?" in url or "tg://proxy?" in url:
+            q = url.split("?", 1)[1] if "?" in url else ""
+            return f"https://t.me/proxy?{q}" if q else url
+        server = p.get("server") or ""
+        port = p.get("port") or ""
+        secret = p.get("secret") or ""
+        return f"https://t.me/proxy?server={server}&port={port}&secret={secret}"
+
+    def _cmd_list(self):
         with self._lock:
             items = list(self._results[:20])
         if not items:
-            self._reply(dialog_id, "Пока пусто. Сделайте `.kupu scan`")
+            self._bulletin("Пусто. Сначала .kupu scan", error=True)
             return
         lines = [
-            f"{i+1}. `{p['server']}:{p['port']}` — **{p['ping']} ms**"
+            f"{i+1}. {p['server']}:{p['port']} — {p['ping']} ms"
             for i, p in enumerate(items)
         ]
-        self._reply(
-            dialog_id,
-            f"✅ Рабочие ({len(items)}):\n"
-            + "\n".join(lines)
-            + "\n\n`.kupu chat` — все ссылки\n`.kupu use 1`",
-        )
+        self._bulletin(f"Рабочие: {len(items)}. .kupu chat — ссылки в чат")
+        try:
+            frag = get_last_fragment()
+            act = frag.getParentActivity() if frag else None
+            if act:
+                b = AlertDialogBuilder(act)
+                b.set_title(f"Рабочие ({len(items)})")
+                b.set_message("\n".join(lines[:15]))
+                b.set_positive_button("OK", None)
+                b.show()
+        except Exception:
+            pass
 
     def _cmd_chat(self, dialog_id: int):
-        """Отправить все рабочие tg:// ссылки **в тот же чат**, где команда."""
+        """
+        Единственная команда, которая пишет в чат.
+        1.https://t.me/proxy?server=...&port=...&secret=... (36 ms)
+        2....
+        """
         did = int(dialog_id or 0) or self._current_dialog_id()
         if not did:
             self._bulletin(
@@ -1285,139 +1289,104 @@ class KupuProxyPlugin(BasePlugin):
         with self._lock:
             items = list(self._results)
         if not items:
-            self._reply(
-                did,
-                "Пока пусто. Сначала `.kupu scan`, потом `.kupu chat`",
-            )
+            self._bulletin("Пусто. Сначала .kupu scan", error=True)
             return
 
-        header = f"KupuProxy — рабочие ({len(items)}):\n\n"
         lines = []
         for i, p in enumerate(items):
-            url = p.get("url") or ""
-            if not str(url).startswith("tg://"):
-                url = (
-                    f"tg://proxy?server={p['server']}&port={p['port']}"
-                    f"&secret={p.get('secret', '')}"
-                )
-            lines.append(f"{i + 1}. {url}")
+            url = self._proxy_tme_url(p)
+            ping = p.get("ping", "?")
+            lines.append(f"{i + 1}.{url} ({ping} ms)")
 
-        # по ~25 ссылок на сообщение — tg:// длинные
         batch: List[str] = []
-        batch_n = 0
         sent = 0
         for line in lines:
             batch.append(line)
-            batch_n += 1
-            if batch_n >= 25:
-                body = header + "\n".join(batch) if sent == 0 else "\n".join(batch)
-                if self._send_text(did, body):
-                    sent += 1
-                else:
-                    self._reply(did, body)
-                    sent += 1
+            if len(batch) >= 20:
+                if not self._send_text(did, "\n".join(batch)):
+                    self._bulletin("Не удалось отправить в чат", error=True)
+                    return
+                sent += 1
                 batch = []
-                batch_n = 0
                 try:
                     time.sleep(0.25)
                 except Exception:
                     pass
         if batch:
-            body = header + "\n".join(batch) if sent == 0 else "\n".join(batch)
-            if not self._send_text(did, body):
-                self._reply(did, body)
-            else:
-                sent += 1
+            if not self._send_text(did, "\n".join(batch)):
+                self._bulletin("Не удалось отправить в чат", error=True)
+                return
+            sent += 1
 
-        self._bulletin(f"В чат: {len(items)} прокси ({sent} сообщ.)")
+        self._bulletin(f"В чат: {len(items)} ссылок")
         self.log(f"_cmd_chat did={did} items={len(items)} msgs={sent}")
 
-    def _cmd_add(self, dialog_id: int):
-        """Добавить все рабочие из скана в список прокси Telegram."""
+    def _cmd_add(self):
         with self._lock:
             items = list(self._results)
         if not items:
-            self._reply(dialog_id, "Пока пусто. Сначала `.kupu scan`")
+            self._bulletin("Пусто. Сначала .kupu scan", error=True)
             return
 
         def work():
             try:
                 added, skipped, err = self._add_all_to_telegram(items)
-                msg = (
-                    f"✅ В список прокси Telegram:\n"
-                    f"• добавлено: **{added}**\n"
-                    f"• уже были: **{skipped}**"
-                )
+                msg = f"Добавлено: {added}, уже были: {skipped}"
                 if err:
-                    msg += f"\n• ошибки: {err}"
-                msg += "\n\nНастройки → Данные и память → Прокси"
-                self._reply(dialog_id, msg)
-                self._bulletin(f"Добавлено прокси: {added}")
+                    msg += f", ошибки: {err}"
+                self._bulletin(msg)
             except Exception as e:
                 self.log(traceback.format_exc())
-                self._reply(dialog_id, f"Ошибка add: {e}")
+                self._bulletin(f"Ошибка add: {e}", error=True)
 
-        self._reply(dialog_id, f"➕ Добавляю {len(items)} рабочих в список прокси…")
+        self._bulletin(f"Добавляю {len(items)} в список прокси…")
         threading.Thread(target=work, daemon=True).start()
 
-    def _cmd_del(self, dialog_id: int):
-        """Удалить нерабочие прокси из списка Telegram (TCP-check)."""
-
+    def _cmd_del(self):
         def work():
             try:
                 checked, deleted, kept = self._delete_dead_from_telegram()
-                self._reply(
-                    dialog_id,
-                    f"🗑 Проверка списка прокси Telegram:\n"
-                    f"• проверено: **{checked}**\n"
-                    f"• удалено (недоступны): **{deleted}**\n"
-                    f"• оставлено: **{kept}**",
+                self._bulletin(
+                    f"Проверено {checked}, удалено {deleted}, осталось {kept}"
                 )
-                self._bulletin(f"Удалено нерабочих: {deleted}")
             except Exception as e:
                 self.log(traceback.format_exc())
-                self._reply(dialog_id, f"Ошибка del: {e}")
+                self._bulletin(f"Ошибка del: {e}", error=True)
 
-        self._reply(dialog_id, "🧹 Проверяю сохранённые прокси, удаляю мёртвые…")
+        self._bulletin("Удаляю мёртвые из списка прокси…")
         threading.Thread(target=work, daemon=True).start()
 
-    def _cmd_use(self, dialog_id: int, n: int):
+    def _cmd_use(self, n: int):
         with self._lock:
             items = list(self._results)
         if n < 1 or n > len(items):
-            self._reply(dialog_id, f"Нет прокси №{n}. Всего: {len(items)}")
+            self._bulletin(f"Нет прокси №{n}. Всего: {len(items)}", error=True)
             return
         p = items[n - 1]
         self._apply_proxy(p["url"])
-        self._reply(
-            dialog_id,
-            f"Подключаю #{n}: `{p['server']}:{p['port']}` ({p['ping']} ms)",
-        )
+        self._bulletin(f"Подключаю #{n} {p['server']}:{p['port']} · {p['ping']} ms")
 
     # endregion
 
     # region scan
 
-    def _start_scan(self, dialog_id: Optional[int]):
+    def _start_scan(self, dialog_id: Optional[int] = None):
+        # dialog_id игнорируется: в чат не пишем (только .kupu chat)
         if self._scanning:
             self._bulletin("Уже сканирую…")
             return
         self._scanning = True
-        if dialog_id:
-            self._reply(dialog_id, "🔎 KupuProxy: загрузка списков…")
-        else:
-            self._bulletin("KupuProxy: сканирование…")
+        self._bulletin("KupuProxy: сканирование…")
 
         def work():
             try:
                 proxies = self._fetch_all()
                 if not proxies:
                     self._scanning = False
-                    msg = "Не удалось скачать списки (сеть / блокировка)"
-                    if dialog_id:
-                        self._reply(dialog_id, msg)
-                    else:
-                        self._bulletin(msg, error=True)
+                    self._bulletin(
+                        "Не удалось скачать списки (сеть / блокировка)",
+                        error=True,
+                    )
                     return
 
                 max_check = self._int_setting("max_check", 120, 20, 500)
@@ -1425,18 +1394,10 @@ class KupuProxyPlugin(BasePlugin):
                 timeout = self._float_setting("timeout_sec", 2.0, 0.8, 5.0)
                 stop_when = self._int_setting("stop_when", 20, 0, 100)
 
-                # shuffle lightly for diversity
                 import random
 
                 random.shuffle(proxies)
                 batch = proxies[:max_check]
-
-                if dialog_id:
-                    self._reply(
-                        dialog_id,
-                        f"📥 Загружено **{len(proxies)}** уникальных\n"
-                        f"Проверяю **{len(batch)}** (×{workers})…",
-                    )
 
                 results: List[Dict[str, Any]] = []
                 checked = 0
@@ -1476,39 +1437,16 @@ class KupuProxyPlugin(BasePlugin):
                 with self._lock:
                     self._results = results
 
-                if dialog_id:
-                    if results:
-                        top = "\n".join(
-                            f"{i+1}. `{r['server']}:{r['port']}` — **{r['ping']} ms**"
-                            for i, r in enumerate(results[:10])
-                        )
-                        self._reply(
-                            dialog_id,
-                            f"✅ Готово: **{len(results)}** рабочих "
-                            f"(проверено {checked})\n\n{top}\n\n"
-                            f"Подключить: `.kupu use 1`",
-                        )
-                    else:
-                        self._reply(
-                            dialog_id,
-                            f"❌ Рабочих нет (проверено {checked}). "
-                            f"Попробуйте снова / другую сеть.",
-                        )
-                else:
-                    self._bulletin(
-                        f"KupuProxy: {len(results)} рабочих"
-                        if results
-                        else "KupuProxy: рабочих нет",
-                        error=not results,
-                    )
-                    if results:
-                        self._show_top_dialog()
+                self._bulletin(
+                    f"KupuProxy: {len(results)} рабочих (проверено {checked}). "
+                    f".kupu chat — ссылки в чат"
+                    if results
+                    else f"KupuProxy: рабочих нет (проверено {checked})",
+                    error=not results,
+                )
             except Exception as e:
                 self.log(traceback.format_exc())
-                if dialog_id:
-                    self._reply(dialog_id, f"Ошибка: {e}")
-                else:
-                    self._bulletin(str(e), error=True)
+                self._bulletin(str(e), error=True)
             finally:
                 self._scanning = False
 
@@ -1795,29 +1733,20 @@ class KupuProxyPlugin(BasePlugin):
             self.log(f"auto update: {e}")
 
     def _do_self_update(self, force: bool = False, dialog_id: Optional[int] = None):
+        # в чат не пишем — только bulletin
         try:
             remote_ver, source_url, body = self._fetch_remote_plugin()
             if not remote_ver:
                 if force:
-                    msg = "Не удалось проверить обновление"
-                    if dialog_id:
-                        self._reply(dialog_id, msg)
-                    else:
-                        self._bulletin(msg, error=True)
+                    self._bulletin("Не удалось проверить обновление", error=True)
                 return
 
             if not is_newer(__version__, remote_ver):
                 if force:
-                    msg = f"Уже актуальная версия v{__version__}"
-                    if dialog_id:
-                        self._reply(dialog_id, msg)
-                    else:
-                        self._bulletin(msg)
+                    self._bulletin(f"Уже актуальная версия v{__version__}")
                 return
 
-            # Write over this file
             path = os.path.abspath(__file__)
-            # also try .plugin sibling
             candidates = [path]
             if path.endswith(".py"):
                 candidates.append(path[:-3] + ".plugin")
@@ -1836,36 +1765,18 @@ class KupuProxyPlugin(BasePlugin):
                     self.log(f"write {p}: {e}")
 
             if not written:
-                # save to Downloads
                 dl = "/storage/emulated/0/Download/kupu_proxy.plugin"
                 with open(dl, "w", encoding="utf-8") as f:
                     f.write(body)
                 written = dl
-                msg = (
-                    f"⬇ Скачано v{remote_ver} → `{dl}`\n"
-                    f"Откройте файл в exteraGram → Install plugin\n"
-                    f"(не удалось перезаписать текущий файл)"
-                )
-            else:
-                msg = (
-                    f"✅ KupuProxy обновлён: **v{__version__} → v{remote_ver}**\n"
-                    f"Файл: `{written}`\n"
-                    f"Перезапустите exteraGram или выкл/вкл плагин."
-                )
 
-            if dialog_id:
-                self._reply(dialog_id, msg)
-            else:
-                self._bulletin(f"KupuProxy → v{remote_ver}. Перезапустите клиент.")
-                self._show_update_done_dialog(remote_ver, written)
+            self._bulletin(f"KupuProxy → v{remote_ver}. Перезапустите клиент.")
+            self._show_update_done_dialog(remote_ver, written)
             self.log(f"updated from {source_url}")
         except Exception as e:
             self.log(traceback.format_exc())
             if force:
-                if dialog_id:
-                    self._reply(dialog_id, f"Ошибка обновления: {e}")
-                else:
-                    self._bulletin(str(e), error=True)
+                self._bulletin(str(e), error=True)
 
     def _show_update_done_dialog(self, ver: str, path: str):
         def go():
