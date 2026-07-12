@@ -115,6 +115,27 @@ object ProxyManager {
                 "https://raw.githack.com/ALIILAPRO/MTProtoProxy/main/mtproto.txt",
                 "https://raw.githubusercontent.com/ALIILAPRO/MTProtoProxy/main/mtproto.txt"
             )
+        ),
+        Source(
+            id = "argh94_scraper",
+            name = "Argh94 Scraper",
+            description = "Парсер каналов · 300+",
+            urls = listOf(
+                "https://raw.githubusercontent.com/Argh94/telegram-proxy-scraper/main/proxy.txt",
+                "https://cdn.jsdelivr.net/gh/Argh94/telegram-proxy-scraper@main/proxy.txt",
+                "https://raw.githack.com/Argh94/telegram-proxy-scraper/main/proxy.txt",
+                "https://ghproxy.net/https://raw.githubusercontent.com/Argh94/telegram-proxy-scraper/main/proxy.txt"
+            )
+        ),
+        Source(
+            id = "grim1313",
+            name = "Grim1313 list",
+            description = "Sync SoliSpirit / fork",
+            urls = listOf(
+                "https://raw.githack.com/Grim1313/mtproto-for-telegram/master/all_proxies.txt",
+                "https://cdn.jsdelivr.net/gh/Grim1313/mtproto-for-telegram@master/all_proxies.txt",
+                "https://raw.githubusercontent.com/Grim1313/mtproto-for-telegram/master/all_proxies.txt"
+            )
         )
     )
 
@@ -303,15 +324,15 @@ object ProxyManager {
     }
 
     /**
-     * Полная проверка «как Telegram» (fast):
-     * 1 attempt (DC2 + secure/faketls), высокий параллелизм, early-stop.
-     * В список — только [ProxyStatus.AVAILABLE].
+     * Полная проверка «как Telegram» (fast) + live callback.
+     * [onFound] вызывается на Main при каждом рабочем прокси.
      */
     suspend fun checkProxiesPingParallel(
         proxies: List<String>,
         settings: ProfileSettings,
         profileLabel: String = settings.label,
-        onProgress: (processed: Int, total: Int, working: Int) -> Unit
+        onProgress: (processed: Int, total: Int, working: Int) -> Unit,
+        onFound: (ProxyWithPing) -> Unit = {}
     ): List<ProxyWithPing> = withContext(Dispatchers.IO) {
         val results = mutableListOf<ProxyWithPing>()
         val mutex = Mutex()
@@ -367,7 +388,7 @@ object ProxyManager {
                         )
                     } else null
 
-                    val (p, w) = mutex.withLock {
+                    val (p, w, found) = mutex.withLock {
                         processed++
                         if (item != null) {
                             results.add(item)
@@ -376,16 +397,17 @@ object ProxyManager {
                                 stop = true
                             }
                         }
-                        processed to working
+                        Triple(processed, working, item)
                     }
-                    withContext(Dispatchers.Main) { onProgress(p, total, w) }
+                    withContext(Dispatchers.Main) {
+                        onProgress(p, total, w)
+                        if (found != null) onFound(found)
+                    }
                 }
             }
         }
 
-        // Не ждём «хвост» слишком долго после early-stop
         jobs.awaitAll()
-
         results.sortedBy { it.pingMs }
     }
 

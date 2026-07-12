@@ -85,10 +85,11 @@ class CheckFileActivity : AppCompatActivity() {
             val checked = ProxyManager.checkProxiesPingParallel(
                 prepared,
                 settings,
-                settings.label
-            ) { processed, total, working ->
-                updateStatus("Проверка (${settings.label})…", processed, total, working)
-            }
+                settings.label,
+                onProgress = { processed, total, working ->
+                    updateStatus("Проверка (${settings.label})…", processed, total, working)
+                }
+            )
 
             if (checked.isNotEmpty()) {
                 val effective = if (settings.mode == NetworkProfileMode.MOBILE) {

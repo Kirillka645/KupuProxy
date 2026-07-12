@@ -228,20 +228,22 @@
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnMegaScan"
             android:layout_width="match_parent"
-            android:layout_height="56dp"
+            android:layout_height="58dp"
             android:layout_marginTop="16dp"
-            android:text="⚡ Мега-скан (500–1000+)"
+            android:text="⚡ Мега-скан · live-список"
             android:textAllCaps="false"
+            android:textSize="16sp"
             android:textStyle="bold"
             app:backgroundTint="@color/kupu_primary"
-            app:cornerRadius="16dp"
+            app:cornerRadius="18dp"
             android:textColor="@color/kupu_on_primary" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:text="Все источники через CDN-зеркала + проверка под выбранный профиль"
+            android:layout_marginTop="8dp"
+            android:lineSpacingExtra="2dp"
+            android:text="8+ источников · CDN · рабочие появляются сразу"
             android:textColor="@color/kupu_on_surface_variant"
             android:textSize="12sp" />
 
@@ -487,6 +489,67 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="proxies.txt + tested"
+                        android:textColor="@color/kupu_on_surface_variant"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
+                <ImageView
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:contentDescription="@null"
+                    android:src="@drawable/ic_chevron_right"
+                    app:tint="@color/kupu_on_surface_variant" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/btn_argh_card"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="10dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:foreground="?attr/selectableItemBackground"
+            app:cardBackgroundColor="@color/kupu_surface"
+            app:cardCornerRadius="18dp"
+            app:cardElevation="0dp"
+            app:strokeColor="@color/kupu_outline"
+            app:strokeWidth="1dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:padding="14dp">
+
+                <TextView
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:background="@drawable/bg_icon_circle"
+                    android:gravity="center"
+                    android:text="📡"
+                    android:textSize="22sp" />
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="12dp"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Argh94 Scraper"
+                        android:textColor="@color/kupu_on_surface"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Парсер Telegram-каналов · 300+"
                         android:textColor="@color/kupu_on_surface_variant"
                         android:textSize="12sp" />
                 </LinearLayout>

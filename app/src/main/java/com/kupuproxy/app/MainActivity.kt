@@ -29,6 +29,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnRussia: MaterialCardView
     private lateinit var btnEurope: MaterialCardView
     private lateinit var btnSurf: MaterialCardView
+    private lateinit var btnArgh: MaterialCardView
     private lateinit var btnOfflineSeed: MaterialButton
     private lateinit var btnLastWifi: MaterialButton
     private lateinit var btnLastMobile: MaterialButton
@@ -88,6 +89,7 @@ class MainActivity : AppCompatActivity() {
         btnRussia = findViewById(R.id.btn_russia_card)
         btnEurope = findViewById(R.id.btn_europe_card)
         btnSurf = findViewById(R.id.btn_surf_card)
+        btnArgh = findViewById(R.id.btn_argh_card)
         btnOfflineSeed = findViewById(R.id.btnOfflineSeed)
         btnLastWifi = findViewById(R.id.btnLastWifi)
         btnLastMobile = findViewById(R.id.btnLastMobile)
@@ -180,6 +182,7 @@ class MainActivity : AppCompatActivity() {
         btnRussia.setOnClickListener { startScan(MODE_SOURCE, "Россия (Kort)", "kort_ru") }
         btnEurope.setOnClickListener { startScan(MODE_SOURCE, "Европа (Kort)", "kort_eu") }
         btnSurf.setOnClickListener { startScan(MODE_SOURCE, "SurfboardV2ray", "surfboard") }
+        btnArgh.setOnClickListener { startScan(MODE_SOURCE, "Argh94 Scraper", "argh94_scraper") }
 
         btnOfflineSeed.setOnClickListener {
             startScan(MODE_SEED, "Seed (офлайн APK)")
