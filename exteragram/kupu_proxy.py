@@ -40,7 +40,7 @@ __description__ = (
     "Самообновление с GitHub Releases."
 )
 __author__ = "@Kirillka645"
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 __icon__ = "exteraPlugins/1"
 __min_version__ = "11.9.1"
 # 1.4.0 / 1.4.3.3 — ок; не требуем 1.4.3.10
@@ -116,7 +116,7 @@ SOURCES: List[Dict[str, Any]] = [
 
 LINK_RE = re.compile(
     r"(?:tg://proxy|https?://t\.me/proxy)\?[^\s<>'\"`)\]#,]+",
-    re.IGNORE_CASE,
+    re.IGNORECASE,
 )
 VERSION_RE = re.compile(r'^__version__\s*=\s*["\']([^"\']+)["\']', re.M)
 
