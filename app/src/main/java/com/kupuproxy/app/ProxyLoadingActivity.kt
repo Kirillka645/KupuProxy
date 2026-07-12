@@ -98,7 +98,7 @@ class ProxyLoadingActivity : AppCompatActivity() {
 
             val prepared = ProxyManager.prepareForProfile(raw, settings)
             updateStatus(
-                "Проверка ${prepared.size} из ${raw.size} (${settings.label})…",
+                "MTProto-проверка ${prepared.size} из ${raw.size} (${settings.label})…\nкак в Telegram: handshake + resPQ",
                 0,
                 prepared.size
             )
@@ -108,7 +108,12 @@ class ProxyLoadingActivity : AppCompatActivity() {
                 settings,
                 settings.label
             ) { processed, total, count ->
-                updateStatus("Проверка (${settings.label})…", processed, total, count)
+                updateStatus(
+                    "MTProto · ${settings.label}\nТолько «Доступен» (как Telegram)",
+                    processed,
+                    total,
+                    count
+                )
             }
 
             // Persist for offline / profile history

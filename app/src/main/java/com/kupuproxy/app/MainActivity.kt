@@ -286,13 +286,14 @@ class MainActivity : AppCompatActivity() {
         MaterialAlertDialogBuilder(this)
             .setTitle("Справка KupuProxy")
             .setMessage(
-                "• Мега-скан тянет 6+ источников через CDN-зеркала (jsDelivr, githack, ghproxy) — " +
-                    "если raw.githubusercontent блокируется на LTE, сработают другие зеркала.\n\n" +
-                    "• Профили Wi‑Fi / LTE меняют batch, таймаут и лимит проверки.\n\n" +
-                    "• Seed (~580) вшит в APK навсегда — работает без интернета.\n\n" +
-                    "• Кэш и «последние Wi‑Fi/LTE» хранятся локально.\n\n" +
-                    "• ⭐ — избранное.\n\n" +
-                    "Работоспособность как Telegram-прокси не гарантируется."
+                "• Проверка как в Telegram: MTProxy handshake + req_pq → resPQ.\n" +
+                    "  В списке только статус «Доступен» (мёртвые secret/порты отсекаются).\n\n" +
+                    "• Мега-скан: 6+ источников через CDN-зеркала.\n\n" +
+                    "• Профили Wi‑Fi / LTE — разный batch и таймаут.\n\n" +
+                    "• Seed ~580 в APK + локальный кэш.\n\n" +
+                    "• ⭐ избранное, фильтр пинга, шаринг.\n\n" +
+                    "100% совпадение с Telegram не гарантируется (DPI/блокировки клиента), " +
+                    "но отсев «открытый порт / мёртвый proxy» значительно лучше TCP-пинга."
             )
             .setPositiveButton("GitHub") { _, _ ->
                 openUrl("https://github.com/${BuildConfig.GITHUB_REPO}")

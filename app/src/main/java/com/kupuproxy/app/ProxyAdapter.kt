@@ -37,6 +37,7 @@ class ProxyAdapter(
         private val tvIndex: TextView = itemView.findViewById(R.id.tvIndex)
         private val tvHost: TextView = itemView.findViewById(R.id.tvHost)
         private val tvPing: TextView = itemView.findViewById(R.id.tvPing)
+        private val tvStatus: TextView = itemView.findViewById(R.id.tvStatus)
         private val btnCopy: MaterialButton = itemView.findViewById(R.id.btnCopy)
         private val btnConnect: MaterialButton = itemView.findViewById(R.id.btnConnect)
         private val btnFavorite: ImageView = itemView.findViewById(R.id.btnFavorite)
@@ -50,18 +51,31 @@ class ProxyAdapter(
                 proxy.url.take(40)
             }
 
+            // Статус как в Telegram
+            when (proxy.status) {
+                ProxyStatus.AVAILABLE -> {
+                    tvStatus.text = proxy.statusText.ifBlank { "Доступен" }
+                    tvStatus.setTextColor(ContextCompat.getColor(context, R.color.ping_excellent))
+                    tvStatus.visibility = View.VISIBLE
+                }
+                ProxyStatus.UNAVAILABLE -> {
+                    tvStatus.text = "Недоступен"
+                    tvStatus.setTextColor(ContextCompat.getColor(context, R.color.ping_slow))
+                    tvStatus.visibility = View.VISIBLE
+                }
+            }
+
             if (proxy.pingMs > 0) {
                 tvPing.text = context.getString(R.string.ping_format, proxy.pingMs)
                 val pingColor = when {
-                    proxy.pingMs < 100 -> R.color.ping_excellent
-                    proxy.pingMs < 300 -> R.color.ping_good
+                    proxy.pingMs < 150 -> R.color.ping_excellent
+                    proxy.pingMs < 400 -> R.color.ping_good
                     else -> R.color.ping_slow
                 }
                 tvPing.setTextColor(ContextCompat.getColor(context, pingColor))
                 tvPing.visibility = View.VISIBLE
             } else {
-                tvPing.text = "★"
-                tvPing.setTextColor(ContextCompat.getColor(context, R.color.kupu_primary))
+                tvPing.visibility = View.GONE
             }
 
             refreshStar(proxy.url)

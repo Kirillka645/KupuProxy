@@ -6,8 +6,6 @@ import android.net.Uri
 import android.os.Environment
 import java.io.File
 import java.io.FileOutputStream
-import java.net.InetSocketAddress
-import java.net.Socket
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -302,6 +300,11 @@ object ProxyManager {
         }
     }
 
+    /**
+     * Полная проверка «как Telegram»:
+     * MTProxy obfuscated2 + req_pq_multi → resPQ.
+     * В список попадают только [ProxyStatus.AVAILABLE].
+     */
     suspend fun checkProxiesPingParallel(
         proxies: List<String>,
         settings: ProfileSettings,
@@ -314,25 +317,36 @@ object ProxyManager {
         var processed = 0
         var working = 0
 
-        proxies.chunked(settings.batchSize).forEach { batch ->
-            val batchResults = batch.map { proxyUrl ->
+        // MTProto-check тяжелее TCP — меньше параллелизма
+        val batch = settings.batchSize.coerceIn(8, 24)
+        val connectMs = settings.connectTimeoutMs.coerceAtLeast(2500)
+        val responseMs = settings.connectTimeoutMs.coerceAtLeast(3000)
+
+        proxies.chunked(batch).forEach { chunk ->
+            val batchResults = chunk.map { proxyUrl ->
                 async {
-                    val info = parseProxyUrl(proxyUrl) ?: return@async null
-                    val ping = measurePing(
-                        info.server,
-                        info.port.toIntOrNull() ?: 443,
-                        settings.connectTimeoutMs
-                    )
-                    if (ping in 1 until settings.maxPingMs) {
-                        ProxyWithPing(proxyUrl, ping, profileLabel)
-                    } else null
+                    // socks — без secret/mtproto, пропускаем (Telegram MTProto only)
+                    if (proxyUrl.contains("socks?", ignoreCase = true)) return@async null
+
+                    val result = MtprotoChecker.checkUrl(proxyUrl, connectMs, responseMs)
+                    if (result.ok && result.rttMs in 1 until settings.maxPingMs.coerceAtLeast(8000)) {
+                        ProxyWithPing(
+                            url = proxyUrl,
+                            pingMs = result.rttMs,
+                            profileLabel = profileLabel,
+                            status = ProxyStatus.AVAILABLE,
+                            statusText = "Доступен"
+                        )
+                    } else {
+                        null
+                    }
                 }
             }.awaitAll().filterNotNull()
 
             mutex.withLock {
                 results.addAll(batchResults)
                 working += batchResults.size
-                processed += batch.size
+                processed += chunk.size
             }
 
             withContext(Dispatchers.Main) {
@@ -341,23 +355,6 @@ object ProxyManager {
         }
 
         results.sortedBy { it.pingMs }
-    }
-
-    private fun measurePing(server: String, port: Int, timeoutMs: Int): Int {
-        var socket: Socket? = null
-        return try {
-            val start = System.currentTimeMillis()
-            socket = Socket()
-            socket.connect(InetSocketAddress(server, port), timeoutMs)
-            (System.currentTimeMillis() - start).toInt()
-        } catch (_: Exception) {
-            -1
-        } finally {
-            try {
-                socket?.close()
-            } catch (_: Exception) {
-            }
-        }
     }
 
     fun parseProxyUrl(url: String): ProxyInfo? {
