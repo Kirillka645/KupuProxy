@@ -4,8 +4,9 @@
 
 ## Установка
 
-1. Скачайте [`kupu_proxy.py`](./kupu_proxy.py)  
-   или из [Releases](https://github.com/Kirillka645/KupuProxy/releases) файл `kupu_proxy.plugin`
+1. Скачайте `kupu_proxy.plugin` из релиза  
+   **[v1.3.1](https://github.com/Kirillka645/KupuProxy/releases/tag/v1.3.1)**  
+   (там же APK и исходник `kupu_proxy.py`)
 2. Переименуйте в **`kupu_proxy.plugin`** (если нужно)
 3. Отправьте файл себе в **Избранное** (Saved Messages) в exteraGram
 4. Откройте файл → **Install plugin**
