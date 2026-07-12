@@ -40,10 +40,11 @@ __description__ = (
     "Самообновление с GitHub Releases."
 )
 __author__ = "@Kirillka645"
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 __icon__ = "exteraPlugins/1"
 __min_version__ = "11.9.1"
-__sdk_version__ = ">=1.4.3.10"
+# 1.4.0 / 1.4.3.3 — ок; не требуем 1.4.3.10
+__sdk_version__ = ">=1.4.0"
 
 
 PLUGIN_ID = "kupu_proxy"
