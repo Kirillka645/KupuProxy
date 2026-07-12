@@ -35,12 +35,13 @@ __id__ = "kupu_proxy"
 __name__ = "KupuProxy"
 __description__ = (
     "Поиск и проверка MTProto-прокси (как KupuProxy Android).\n"
-    "Команды: `.kupu` · `.kupu scan` · `.kupu use N` · `.kupu update`\n"
-    "Источники: SoliSpirit, Yagami200, Kort, Argh94, Surfboard…\n"
-    "Самообновление с GitHub Releases."
+    "Кнопка **Сделать всё** в «Настройки прокси».\n"
+    "Команды: `.kupu auto` · `.kupu chat` · `.kupu add` · `.kupu del` · `.kupu update`\n"
+    "Источники: SoliSpirit, Yagami200, Kort, Argh94…\n"
+    "Самообновление с GitHub."
 )
 __author__ = "@Kirillka645"
-__version__ = "1.0.3"
+__version__ = "1.1.0"
 __icon__ = "exteraPlugins/1"
 __min_version__ = "11.9.1"
 # 1.4.0 / 1.4.3.3 — ок; не требуем 1.4.3.10
@@ -221,6 +222,7 @@ class KupuProxyPlugin(BasePlugin):
         self._lock = threading.Lock()
         self._drawer_id = None
         self._chat_id = None
+        self._hooks = []
 
     # region lifecycle
 
@@ -231,7 +233,7 @@ class KupuProxyPlugin(BasePlugin):
                 MenuItemData(
                     menu_type=MenuItemType.DRAWER_MENU,
                     text="KupuProxy",
-                    subtext="MTProto прокси",
+                    subtext="Одной кнопкой · автопрокси",
                     icon="msg_proxy",
                     on_click=self._on_drawer_click,
                     priority=50,
@@ -245,7 +247,7 @@ class KupuProxyPlugin(BasePlugin):
                 MenuItemData(
                     menu_type=MenuItemType.CHAT_ACTION_MENU,
                     text="KupuProxy",
-                    subtext="Скан прокси",
+                    subtext="Скан / всё сразу",
                     icon="msg_proxy",
                     on_click=self._on_drawer_click,
                     priority=20,
@@ -259,12 +261,509 @@ class KupuProxyPlugin(BasePlugin):
         except Exception as e:
             self.log(f"add_on_send_message_hook: {e}")
 
+        self._hook_proxy_settings_screen()
+
         if self.get_setting("auto_update", True):
             threading.Thread(target=self._bg_check_update, daemon=True).start()
 
     def on_plugin_unload(self):
         self._scanning = False
         self.log("KupuProxy unloaded")
+
+    # endregion
+
+    # region proxy settings UI inject
+
+    def _hook_proxy_settings_screen(self):
+        """Вкладка/кнопка KupuProxy на экране «Настройки прокси»."""
+        class_names = (
+            "org.telegram.ui.ProxyListActivity",
+            "org.telegram.ui.ProxySettingsActivity",
+            "com.exteragram.messenger.ui.ProxyListActivity",
+        )
+        for cname in class_names:
+            try:
+                self._hook_fragment_create_view(cname)
+            except Exception as e:
+                self.log(f"hook {cname}: {e}")
+
+    def _hook_fragment_create_view(self, class_name: str):
+        try:
+            from java.lang import Class
+        except Exception:
+            return
+
+        try:
+            clazz = Class.forName(class_name)
+        except Exception:
+            return
+
+        methods = []
+        try:
+            for m in clazz.getDeclaredMethods():
+                if m.getName() in ("createView", "onResume", "updateRows"):
+                    methods.append(m)
+        except Exception as e:
+            self.log(f"getDeclaredMethods: {e}")
+            return
+
+        plugin = self
+
+        def after_hook(param):
+            try:
+                fragment = param.thisObject
+                if fragment is None:
+                    return
+                # small delay so view hierarchy is ready
+                def inject():
+                    plugin._inject_kupu_bar(fragment)
+
+                run_on_ui_thread(inject)
+            except Exception as e:
+                plugin.log(f"after hook: {e}")
+
+        for m in methods:
+            try:
+                if m.getName() == "createView":
+                    self.hook_method(m, after=after_hook)
+                    self.log(f"hooked {class_name}.{m.getName()}")
+                elif m.getName() == "onResume":
+                    self.hook_method(m, after=after_hook)
+            except Exception as e:
+                self.log(f"hook_method fail {m.getName()}: {e}")
+
+    def _inject_kupu_bar(self, fragment):
+        """Добавляет блок KupuProxy на экран «Настройки прокси»."""
+        try:
+            view = None
+            try:
+                view = fragment.getFragmentView()
+            except Exception:
+                view = getattr(fragment, "fragmentView", None)
+            if view is None:
+                return
+
+            TAG = "kupu_proxy_settings_bar"
+            try:
+                if view.findViewWithTag(TAG) is not None:
+                    return
+            except Exception:
+                pass
+            # already attached via list header?
+            try:
+                lv = getattr(fragment, "listView", None)
+                if lv is not None and lv.findViewWithTag(TAG) is not None:
+                    return
+            except Exception:
+                pass
+
+            from android.widget import LinearLayout, TextView, FrameLayout
+            from android.view import ViewGroup, Gravity, View
+            from android.util import TypedValue
+            from android.graphics import Typeface
+
+            act = None
+            try:
+                act = fragment.getParentActivity()
+            except Exception:
+                pass
+            ctx = act if act is not None else view.getContext()
+            density = ctx.getResources().getDisplayMetrics().density
+
+            try:
+                from org.telegram.ui.ActionBar import Theme
+
+                bg = Theme.getColor(Theme.key_windowBackgroundWhite)
+                text_c = Theme.getColor(Theme.key_windowBackgroundWhiteBlackText)
+                sub_c = Theme.getColor(Theme.key_windowBackgroundWhiteGrayText2)
+                accent = Theme.getColor(Theme.key_featuredStickers_addButton)
+                accent_text = Theme.getColor(Theme.key_featuredStickers_buttonText)
+            except Exception:
+                bg = 0xFFFFFFFF
+                text_c = 0xFF000000
+                sub_c = 0xFF888888
+                accent = 0xFF00C2A8
+                accent_text = 0xFFFFFFFF
+
+            bar = LinearLayout(ctx)
+            bar.setTag(TAG)
+            bar.setOrientation(LinearLayout.VERTICAL)
+            pad = int(16 * density)
+            bar.setPadding(pad, int(12 * density), pad, int(12 * density))
+            bar.setBackgroundColor(bg)
+
+            title = TextView(ctx)
+            title.setText("KupuProxy")
+            title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17)
+            title.setTypeface(Typeface.DEFAULT_BOLD)
+            title.setTextColor(text_c)
+
+            sub = TextView(ctx)
+            sub.setText(
+                "Скан → добавить рабочие → включить прокси и автопереключение"
+            )
+            sub.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13)
+            sub.setTextColor(sub_c)
+            sub.setPadding(0, int(4 * density), 0, int(10 * density))
+
+            btn = TextView(ctx)
+            btn.setText("⚡  Сделать всё")
+            btn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15)
+            btn.setTypeface(Typeface.DEFAULT_BOLD)
+            btn.setGravity(Gravity.CENTER)
+            btn.setTextColor(accent_text)
+            btn.setPadding(pad, int(12 * density), pad, int(12 * density))
+            try:
+                from android.graphics.drawable import GradientDrawable
+
+                d = GradientDrawable()
+                d.setColor(accent)
+                d.setCornerRadius(14 * density)
+                btn.setBackground(d)
+            except Exception:
+                btn.setBackgroundColor(accent)
+
+            plugin = self
+            click_ok = False
+
+            # Chaquopy dynamic_proxy (несколько путей импорта)
+            for import_path in (
+                "java",
+                "com.chaquo.python",
+            ):
+                if click_ok:
+                    break
+                try:
+                    if import_path == "java":
+                        from java import dynamic_proxy  # type: ignore
+                    else:
+                        from com.chaquo.python import dynamic_proxy  # type: ignore
+
+                    class ClickListener(dynamic_proxy(View.OnClickListener)):
+                        def onClick(self, v):
+                            plugin._one_tap_setup(None)
+
+                    btn.setOnClickListener(ClickListener())
+                    click_ok = True
+                except Exception as e:
+                    self.log(f"click proxy {import_path}: {e}")
+
+            if not click_ok:
+                # fallback: long-click also works if short fails
+                try:
+                    from java import dynamic_proxy  # type: ignore
+
+                    class LongClick(dynamic_proxy(View.OnLongClickListener)):
+                        def onLongClick(self, v):
+                            plugin._one_tap_setup(None)
+                            return True
+
+                    btn.setOnLongClickListener(LongClick())
+                    btn.setText("⚡  Сделать всё (долгое нажатие)")
+                except Exception as e:
+                    self.log(f"click fallback: {e}")
+
+            btn.setClickable(True)
+            btn.setFocusable(True)
+
+            status = TextView(ctx)
+            status.setTag("kupu_status_line")
+            status.setText("Одна кнопка — полный автомат")
+            status.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12)
+            status.setTextColor(sub_c)
+            status.setPadding(0, int(8 * density), 0, 0)
+
+            bar.addView(title)
+            bar.addView(sub)
+            bar.addView(btn)
+            bar.addView(status)
+            try:
+                from android.view import View as AView
+
+                line = AView(ctx)
+                line.setBackgroundColor(0x22000000)
+                line_lp = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, max(1, int(density))
+                )
+                line_lp.topMargin = int(10 * density)
+                bar.addView(line, line_lp)
+            except Exception:
+                pass
+
+            attached = False
+
+            # 1) Telegram RecyclerListView header — лучший UX
+            for attr in ("listView", "listview", "recyclerListView"):
+                try:
+                    lv = getattr(fragment, attr, None)
+                    if lv is None:
+                        continue
+                    if hasattr(lv, "addHeaderView"):
+                        try:
+                            lv.addHeaderView(bar, None, False)
+                        except TypeError:
+                            lv.addHeaderView(bar)
+                        attached = True
+                        self.log(f"KupuProxy bar as header via {attr}")
+                        break
+                except Exception as e:
+                    self.log(f"header {attr}: {e}")
+
+            # 2) LinearLayout insert at top
+            if not attached and isinstance(view, ViewGroup):
+                try:
+                    # SizeNotifierFrameLayout: children = actionBar, listView...
+                    # insert bar after actionBar if possible
+                    idx = 0
+                    try:
+                        ab = getattr(fragment, "actionBar", None)
+                        if ab is not None:
+                            for i in range(view.getChildCount()):
+                                if view.getChildAt(i) is ab:
+                                    idx = i + 1
+                                    break
+                    except Exception:
+                        idx = 0
+                    view.addView(bar, idx)
+                    attached = True
+                    self.log("KupuProxy bar inserted into fragment view")
+                except Exception as e:
+                    self.log(f"insert child: {e}")
+
+            # 3) FrameLayout overlay under action bar
+            if not attached:
+                try:
+                    lp = FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                    )
+                    lp.gravity = Gravity.TOP
+                    lp.topMargin = int(56 * density)
+                    view.addView(bar, lp)
+                    attached = True
+                    self.log("KupuProxy bar as overlay")
+                except Exception as e:
+                    self.log(f"overlay: {e}")
+
+            if not attached:
+                self.log("KupuProxy bar: failed to attach")
+        except Exception:
+            self.log(f"inject bar: {traceback.format_exc()}")
+
+    def _one_tap_setup(self, dialog_id: Optional[int]):
+        """
+        Одной кнопкой:
+        1) скачать списки  2) проверить  3) добавить рабочие
+        4) удалить мёртвые  5) включить прокси + автопереключение
+        6) выбрать лучший как текущий
+        """
+        if self._scanning:
+            self._bulletin("Уже выполняется…")
+            return
+
+        self._scanning = True
+        msg0 = "KupuProxy: делаю всё… скан → добавление → автопереключение"
+        if dialog_id:
+            self._reply(dialog_id, "⚡ " + msg0)
+        else:
+            self._bulletin(msg0)
+
+        def work():
+            try:
+                # 1-2 scan
+                proxies = self._fetch_all()
+                if not proxies:
+                    self._finish_one_tap(dialog_id, False, "Не удалось скачать списки")
+                    return
+
+                max_check = self._int_setting("max_check", 120, 20, 500)
+                workers = self._int_setting("workers", 24, 4, 48)
+                timeout = self._float_setting("timeout_sec", 2.0, 0.8, 5.0)
+                stop_when = self._int_setting("stop_when", 20, 0, 100)
+
+                import random
+
+                random.shuffle(proxies)
+                batch = proxies[:max_check]
+
+                results: List[Dict[str, Any]] = []
+
+                def check_one(url: str) -> Optional[Dict[str, Any]]:
+                    info = parse_proxy_url(url)
+                    if not info:
+                        return None
+                    ping = tcp_ping(info["server"], info["port"], timeout)
+                    if ping < 0:
+                        return None
+                    return {
+                        "url": info["url"] if str(info["url"]).startswith("tg://") else url,
+                        "server": info["server"],
+                        "port": info["port"],
+                        "secret": info["secret"],
+                        "ping": ping,
+                    }
+
+                with ThreadPoolExecutor(max_workers=workers) as ex:
+                    futs = [ex.submit(check_one, u) for u in batch]
+                    for fut in as_completed(futs):
+                        try:
+                            item = fut.result()
+                        except Exception:
+                            item = None
+                        if item:
+                            results.append(item)
+                            results.sort(key=lambda x: x["ping"])
+                            if stop_when and len(results) >= stop_when:
+                                break
+
+                with self._lock:
+                    self._results = results
+
+                if not results:
+                    self._finish_one_tap(
+                        dialog_id, False, "Рабочих прокси не найдено. Попробуйте снова."
+                    )
+                    return
+
+                # 3 add all working
+                added, skipped, err = self._add_all_to_telegram(results)
+
+                # 4 delete dead from saved list
+                try:
+                    checked, deleted, kept = self._delete_dead_from_telegram()
+                except Exception as e:
+                    self.log(f"del in one-tap: {e}")
+                    deleted = 0
+
+                # 5-6 enable + rotation + best current
+                best = results[0]
+                self._enable_proxy_system(best)
+
+                summary = (
+                    f"✅ KupuProxy готово!\n"
+                    f"• рабочих: **{len(results)}**\n"
+                    f"• добавлено: **{added}** (уже были: {skipped})\n"
+                    f"• удалено мёртвых: **{deleted}**\n"
+                    f"• текущий: `{best['server']}:{best['port']}` · {best['ping']} ms\n"
+                    f"• прокси **вкл**, автопереключение **вкл**\n\n"
+                    f"Если один упадёт — Telegram переключит на другой."
+                )
+                self._finish_one_tap(dialog_id, True, summary)
+            except Exception as e:
+                self.log(traceback.format_exc())
+                self._finish_one_tap(dialog_id, False, f"Ошибка: {e}")
+            finally:
+                self._scanning = False
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _finish_one_tap(self, dialog_id: Optional[int], ok: bool, text: str):
+        if dialog_id:
+            self._reply(dialog_id, text)
+        else:
+            self._bulletin(text[:200], error=not ok)
+
+        def dlg():
+            try:
+                frag = get_last_fragment()
+                act = frag.getParentActivity() if frag else None
+                if not act:
+                    return
+                b = AlertDialogBuilder(act)
+                b.set_title("KupuProxy" if ok else "KupuProxy — ошибка")
+                b.set_message(text)
+                b.set_positive_button("OK", None)
+                b.show()
+            except Exception as e:
+                self.log(f"one-tap dialog: {e}")
+
+        run_on_ui_thread(dlg)
+
+    def _enable_proxy_system(self, best: Dict[str, Any]):
+        """Включить прокси, автопереключение, выбрать лучший."""
+        done = threading.Event()
+        err_box: List[Exception] = []
+
+        def go():
+            try:
+                from org.telegram.messenger import SharedConfig
+                from org.telegram.tgnet import ConnectionsManager
+
+                # ensure best is in list & current
+                proxy = self._make_proxy_info(
+                    best["server"], int(best["port"]), best.get("secret") or ""
+                )
+                try:
+                    SharedConfig.addProxy(proxy)
+                except Exception:
+                    pass
+                SharedConfig.currentProxy = proxy
+
+                # enable use proxy
+                for name in ("proxyEnabled", "useProxySettings"):
+                    try:
+                        setattr(SharedConfig, name, True)
+                    except Exception:
+                        pass
+
+                # auto rotation / switch
+                for name in (
+                    "proxyRotationEnabled",
+                    "proxyAutoSwitch",
+                    "useProxyRotation",
+                ):
+                    try:
+                        setattr(SharedConfig, name, True)
+                    except Exception:
+                        pass
+
+                try:
+                    SharedConfig.saveProxyList()
+                except Exception:
+                    pass
+
+                # prefs backup
+                try:
+                    from org.telegram.messenger import ApplicationLoader
+                    from android.content import Context
+
+                    ctx = ApplicationLoader.applicationContext
+                    prefs = ctx.getSharedPreferences("mainconfig", Context.MODE_PRIVATE)
+                    ed = prefs.edit()
+                    ed.putBoolean("proxy_enabled", True)
+                    for key in (
+                        "proxyRotationEnabled",
+                        "proxy_rotation_enabled",
+                        "proxyAutoSwitch",
+                        "auto_proxy_switch",
+                    ):
+                        ed.putBoolean(key, True)
+                    ed.apply()
+                except Exception as e:
+                    self.log(f"prefs rotation: {e}")
+
+                try:
+                    ConnectionsManager.setProxySettings(
+                        True,
+                        proxy.address,
+                        proxy.port,
+                        proxy.username,
+                        proxy.password,
+                        proxy.secret,
+                    )
+                except Exception as e:
+                    self.log(f"setProxySettings: {e}")
+
+                self._notify_proxy_changed()
+            except Exception as e:
+                err_box.append(e)
+            finally:
+                done.set()
+
+        run_on_ui_thread(go)
+        done.wait(30)
+        if err_box:
+            raise err_box[0]
 
     # endregion
 
@@ -311,7 +810,12 @@ class KupuProxyPlugin(BasePlugin):
             ),
             Divider(),
             Header(text="Команды"),
+            Text(
+                text="⚡ Настройки прокси → «Сделать всё»",
+                subtext="Или команда `.kupu auto`",
+            ),
             Text(text="`.kupu` — справка"),
+            Text(text="`.kupu auto` — полный автомат одной кнопкой"),
             Text(text="`.kupu scan` — скачать + проверить"),
             Text(text="`.kupu chat` — все рабочие ссылки в чат"),
             Text(text="`.kupu add` — добавить рабочие в список прокси TG"),
@@ -429,18 +933,16 @@ class KupuProxyPlugin(BasePlugin):
                 builder.set_message(
                     f"v{__version__}\n"
                     f"Рабочих в кэше: {n}\n\n"
-                    f"• Скан — загрузить списки и проверить\n"
-                    f"• Топ — лучшие по пингу\n"
-                    f"• Обновить — скачать новую версию плагина\n\n"
-                    f"Или команды: .kupu scan / .kupu use 1"
+                    f"⚡ **Сделать всё** — скан, добавить рабочие,\n"
+                    f"удалить мёртвые, включить прокси + автопереключение.\n\n"
+                    f"Также: Настройки → Данные и память → Прокси\n"
+                    f"Или `.kupu auto` в чате."
                 )
-                builder.set_positive_button("Скан", lambda b, w: self._start_scan(None))
-                builder.set_neutral_button("Топ", lambda b, w: self._show_top_dialog())
-                builder.set_negative_button(
-                    "Обновить", lambda b, w: threading.Thread(
-                        target=self._do_self_update, args=(True,), daemon=True
-                    ).start()
+                builder.set_positive_button(
+                    "⚡ Сделать всё", lambda b, w: self._one_tap_setup(None)
                 )
+                builder.set_neutral_button("Скан", lambda b, w: self._start_scan(None))
+                builder.set_negative_button("Топ", lambda b, w: self._show_top_dialog())
                 builder.show()
             except Exception as e:
                 self.log(traceback.format_exc())
@@ -541,6 +1043,8 @@ class KupuProxyPlugin(BasePlugin):
                 "🔌 **KupuProxy** v"
                 + __version__
                 + "\n\n"
+                + "⚡ **Одной кнопкой** (экран «Настройки прокси» или команда):\n"
+                + "`.kupu auto` — скан → добавить → удалить мёртвые → вкл + автопереключение\n\n"
                 + "`.kupu scan` — скачать + проверить\n"
                 + "`.kupu chat` — все рабочие ссылки в чат\n"
                 + "`.kupu add` — добавить все рабочие в прокси Telegram\n"
@@ -550,6 +1054,8 @@ class KupuProxyPlugin(BasePlugin):
                 + "`.kupu update` — обновить плагин\n"
                 + "`.kupu menu` — диалог\n",
             )
+        elif cmd in ("auto", "all", "go", "setup"):
+            self._one_tap_setup(dialog_id)
         elif cmd == "scan":
             self._start_scan(dialog_id)
         elif cmd == "chat":
