@@ -41,7 +41,7 @@ __description__ = (
     "Самообновление с GitHub."
 )
 __author__ = "@Kirillka645"
-__version__ = "1.1.1"
+__version__ = "1.1.2"
 __icon__ = "exteraPlugins/1"
 __min_version__ = "11.9.1"
 # 1.4.0 / 1.4.3.3 — ок; не требуем 1.4.3.10
@@ -556,44 +556,24 @@ class KupuProxyPlugin(BasePlugin):
                 ),
             )
 
-            # --- native-style toggles (как на скрине #2) ---
+            # один переключатель: автопереключение (если прокси упадёт)
             flags = self._read_proxy_flags()
-
-            def on_use(v):
-                self._apply_proxy_flag("use", v)
-                self._bulletin("Прокси " + ("вкл" if v else "выкл"))
-
-            def on_vpn(v):
-                # «Не использовать с VPN» — True = не использовать при VPN
-                self._apply_proxy_flag("skip_vpn", v)
-                self._bulletin(
-                    "С VPN: " + ("прокси выкл" if v else "прокси можно")
-                )
 
             def on_rotation(v):
                 self._apply_proxy_flag("rotation", v)
+                if v:
+                    # автопереключение имеет смысл только с включённым прокси
+                    try:
+                        self._apply_proxy_flag("use", True)
+                    except Exception:
+                        pass
                 self._bulletin("Автопереключение " + ("вкл" if v else "выкл"))
-
-            row_use, sw_use = make_switch_row(
-                "Использовать прокси", flags.get("use", False), on_use
-            )
-            bar.addView(row_use)
-            d1, d1lp = make_divider()
-            bar.addView(d1, d1lp)
-
-            row_vpn, sw_vpn = make_switch_row(
-                "Не использовать с VPN", flags.get("skip_vpn", False), on_vpn
-            )
-            bar.addView(row_vpn)
-            d2, d2lp = make_divider()
-            bar.addView(d2, d2lp)
 
             row_rot, sw_rot = make_switch_row(
                 "Автопереключение прокси", flags.get("rotation", False), on_rotation
             )
             bar.addView(row_rot)
 
-            # hint under rotation (native-like gray text)
             hint = TextView(ctx)
             hint.setText(
                 "Если текущий прокси перестанет работать — переключится на другой."
@@ -610,12 +590,7 @@ class KupuProxyPlugin(BasePlugin):
                 pass
             bar.addView(hint)
 
-            # keep refs to refresh after one-tap
-            self._kupu_switches = {
-                "use": sw_use,
-                "skip_vpn": sw_vpn,
-                "rotation": sw_rot,
-            }
+            self._kupu_switches = {"rotation": sw_rot}
 
             attached = False
             # 1) list header only (не overlay — иначе наложение текста)
