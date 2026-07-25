@@ -1,6 +1,7 @@
 package com.kupuproxy.app.data.source
 
 import com.kupuproxy.app.data.remote.HttpSupport
+import com.kupuproxy.app.data.remote.TelegramBypass
 import com.kupuproxy.app.domain.model.RawProxyEntry
 import com.kupuproxy.app.domain.model.SourceKind
 import com.kupuproxy.app.domain.parser.ProxyParser
@@ -8,7 +9,10 @@ import com.kupuproxy.app.domain.source.ProxySource
 import okhttp3.OkHttpClient
 
 /**
- * Публичный веб-превью t.me/s/<channel> — без авторизации.
+ * Публичные Telegram-каналы без API-ключа.
+ *
+ * При блокировке t.me ходим через зеркала (Jina reader, RSSHub, allorigins, telesco.pe).
+ * Парсер вытаскивает tg:// / t.me/proxy из HTML, RSS и markdown.
  */
 class TelegramWebPreviewSource(
     private val channelUsername: String,
@@ -20,10 +24,25 @@ class TelegramWebPreviewSource(
     override val kind: SourceKind = SourceKind.TELEGRAM_CHANNEL
 
     override suspend fun fetch(client: OkHttpClient): List<RawProxyEntry> {
-        val url = "https://t.me/s/$channelUsername"
-        val (body, _) = HttpSupport.downloadText(client, url)
-        if (body.isNullOrBlank()) return emptyList()
-        // recent posts only roughly — full page is fine, parser extracts links
-        return ProxyParser.parse(body, id, displayName)
+        val urls = TelegramBypass.channelPreviewUrls(channelUsername)
+        val downloaded = HttpSupport.downloadWithRetry(
+            client = client,
+            urls = urls,
+            attempts = 2,
+            headers = TelegramBypass.browserHeaders(),
+            minUsefulBytes = 80
+        ) ?: return emptyList()
+
+        val body = downloaded.first
+        // jina returns markdown; RSS is XML — both fine for ProxyParser
+        val parsed = ProxyParser.parse(body, id, displayName)
+        if (parsed.isNotEmpty()) return parsed
+
+        // Sometimes mirrors wrap content; second pass on unescaped links
+        val loose = body
+            .replace("\\u0026", "&")
+            .replace("&amp;", "&")
+            .replace("\\/", "/")
+        return ProxyParser.parse(loose, id, displayName)
     }
 }

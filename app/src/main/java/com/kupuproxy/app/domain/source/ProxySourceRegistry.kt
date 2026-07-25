@@ -76,16 +76,17 @@ object ProxySourceRegistry {
             kind = SourceKind.HTML_PAGE,
             enabledByDefault = false
         ),
-        // Popular public proxy channels (web preview)
+        // TG-каналы: при блокировке t.me — зеркала (Jina / RSSHub / allorigins)
+        // Держим умеренный набор, чтобы не жечь сеть при недоступности всех зеркал.
         TelegramWebPreviewSource("ProxyMTProto"),
         TelegramWebPreviewSource("mtprotoproxy"),
         TelegramWebPreviewSource("ProxyOFF"),
         TelegramWebPreviewSource("proxies_for_telegram"),
         TelegramWebPreviewSource("MTProto_proxy"),
-        TelegramWebPreviewSource("proxytelegram"),
-        TelegramWebPreviewSource("proxy_mtproto_list"),
         TelegramWebPreviewSource("FreeMTProto"),
         TelegramWebPreviewSource("KupuProxy", "TG @KupuProxy", enabledByDefault = true),
+        TelegramWebPreviewSource("proxytelegram", enabledByDefault = false),
+        TelegramWebPreviewSource("proxy_mtproto_list", enabledByDefault = false),
         TelegramWebPreviewSource("socks5_list", enabledByDefault = false)
     )
 

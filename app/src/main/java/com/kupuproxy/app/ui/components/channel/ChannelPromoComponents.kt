@@ -48,37 +48,57 @@ fun ChannelPromoCard(
     onDismiss: () -> Unit,
     cardModifier: Modifier = Modifier
 ) {
-    Card(modifier = cardModifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.Top) {
+    Card(
+        modifier = cardModifier
+            .fillMaxWidth()
+            .padding(horizontal = 0.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Icon(
                     imageVector = Icons.Default.Send,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier.size(22.dp)
                 )
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = stringResource(R.string.channel_card_title),
-                        style = MaterialTheme.typography.titleMedium
+                        style = MaterialTheme.typography.titleSmall
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = stringResource(R.string.channel_card_subtitle),
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                IconButton(onClick = onDismiss) {
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.size(36.dp)
+                ) {
                     Icon(
                         imageVector = Icons.Default.Close,
-                        contentDescription = stringResource(R.string.channel_dismiss)
+                        contentDescription = stringResource(R.string.channel_dismiss),
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
-            Spacer(modifier = Modifier.height(12.dp))
-            Button(onClick = onSubscribe, modifier = Modifier.fillMaxWidth()) {
+            Spacer(modifier = Modifier.height(10.dp))
+            Button(
+                onClick = onSubscribe,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp)
+            ) {
                 Text(stringResource(R.string.channel_subscribe))
             }
         }
@@ -210,6 +230,6 @@ fun ChannelPromoHost(
     ChannelPromoCard(
         onSubscribe = { TelegramIntents.openTelegramChannel(context) },
         onDismiss = onDismissForever,
-        cardModifier = Modifier.padding(bottom = 12.dp)
+        cardModifier = Modifier.padding(bottom = 4.dp)
     )
 }

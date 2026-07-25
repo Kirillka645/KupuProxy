@@ -14,16 +14,17 @@ Android-приложение для поиска и проверки **MTProto-�
 
 Плагин: `.kupu scan` / `.kupu chat` / `.kupu auto` / `.kupu update` (в чат пишет только `.kupu chat`).
 
-## Возможности (v1.3.2)
+## Возможности (v1.3.2-fix)
 
-- **Мега-скан** с параллельным агрегатом источников (таймаут, retry, CDN-фолбэк)
-- **Мультиформатный парсер**: tg://, t.me, JSON, host:port:secret, HTML, YAML mtproto, markdown-таблицы, base64
-- **MTProto-проверка** (handshake + req_pq / resPQ), не голый TCP
+- **Мега-скан** с параллельным агрегатом (таймаут, retry, CDN-фолбэк)
+- **TG-bypass**: если `t.me` недоступен — каналы читаются через Jina reader, RSSHub, allorigins, telesco.pe
+- **Мультиформатный парсер**: tg://, t.me, JSON, host:port:secret, HTML, YAML, markdown, base64
+- **MTProto-проверка** (handshake + req_pq / resPQ)
 - **Профили Wi‑Fi / LTE**, seed offline, кэш, избранное
-- **Канал @KupuProxy** в UI (карточка, настройки, about + QR, invite после подключений)
-- **Room** (proxies / sources / blacklist / history), **WorkManager** фоновый рескан
-- **Remote source manifest** (`sources_manifest.json`) — новые источники без релиза APK
+- **Канал @KupuProxy** в UI + **свои URL-источники** (без Telegram)
+- **Room** + **WorkManager**, remote `sources_manifest.json`
 - Обновление APK из GitHub Releases
+
 
 ## Архитектура (app)
 
@@ -38,7 +39,7 @@ ui/         Compose theme + channel components, Settings/About
 
 - SoliSpirit/mtproto, Yagami200, kort0881 (RU/EU/All)
 - Surfboardv2ray TGProto, ALIILAPRO, Argh94 scraper, Grim1313
-- Telegram web-preview каналы (`t.me/s/...`), включая @KupuProxy
+- Telegram-каналы через **зеркала** (не только прямой `t.me/s/...`)
 - Remote manifest + пользовательские URL (Room `sources`)
 
 ## Сборка

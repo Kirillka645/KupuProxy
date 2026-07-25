@@ -14,8 +14,8 @@ android {
         applicationId = "com.kupuproxy.app"
         minSdk = 24
         targetSdk = 35
-        versionCode = 8
-        versionName = "1.3.2"
+        versionCode = 9
+        versionName = "1.3.2-fix"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

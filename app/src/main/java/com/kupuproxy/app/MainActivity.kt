@@ -146,21 +146,30 @@ class MainActivity : AppCompatActivity() {
         channelPromoCompose.setViewCompositionStrategy(
             ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
         )
+        // Пока грузим prefs — не резервируем «пустую» высоту Compose (съезжал UI).
+        channelPromoCompose.visibility = android.view.View.GONE
         channelPromoCompose.setContent {
             KupuProxyTheme {
-                var dismissed by remember { mutableStateOf(false) }
+                var dismissed by remember { mutableStateOf<Boolean?>(null) }
                 val scope = rememberCoroutineScope()
-                // load dismissed state once
                 androidx.compose.runtime.LaunchedEffect(Unit) {
                     dismissed = promoPreferences.isPromoDismissed()
                 }
-                ChannelPromoHost(
-                    dismissed = dismissed,
-                    onDismissForever = {
-                        dismissed = true
-                        scope.launch { promoPreferences.dismissPromoCard() }
-                    }
-                )
+                androidx.compose.runtime.SideEffect {
+                    channelPromoCompose.visibility =
+                        if (dismissed == false) android.view.View.VISIBLE
+                        else android.view.View.GONE
+                }
+                if (dismissed == false) {
+                    ChannelPromoHost(
+                        dismissed = false,
+                        onDismissForever = {
+                            dismissed = true
+                            channelPromoCompose.visibility = android.view.View.GONE
+                            scope.launch { promoPreferences.dismissPromoCard() }
+                        }
+                    )
+                }
             }
         }
     }
