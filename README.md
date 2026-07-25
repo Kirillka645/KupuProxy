@@ -14,7 +14,7 @@ Android-приложение для поиска и проверки **MTProto-�
 
 Плагин: `.kupu scan` / `.kupu chat` / `.kupu auto` / `.kupu update` (в чат пишет только `.kupu chat`).
 
-## Возможности (v1.3.2-fix)
+## Возможности (v1.3.3)
 
 - **Мега-скан** с параллельным агрегатом (таймаут, retry, CDN-фолбэк)
 - **TG-bypass**: если `t.me` недоступен — каналы читаются через Jina reader, RSSHub, allorigins, telesco.pe
