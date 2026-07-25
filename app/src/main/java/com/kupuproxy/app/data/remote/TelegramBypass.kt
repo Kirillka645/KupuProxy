@@ -57,8 +57,9 @@ object TelegramBypass {
             Triple("Surfboardv2ray", "TGProto", "proxies-tested.txt") to "main",
             Triple("kort0881", "telegram-proxy-collector", "proxy_all.txt") to "main",
             Triple("Grim1313", "mtproto-for-telegram", "all_proxies.txt") to "master",
-            Triple("mheidari98", "MTProtoProxyList", "mtproto-proxy.txt") to "main",
-            Triple("hookzof", "socks5_list", "tg/mtproto.txt") to "master"
+            Triple("mheidari98", "MTProtoProxyList", "mtproto-proxy.txt") to "main"
+            // hookzof: tg/mtproto.txt НЕ существует — только tg/mtproto.json → mtpro.xyz
+            // (см. MtproXyzSource)
         )
         return lists.flatMap { (triple, ref) ->
             val (owner, repo, path) = triple

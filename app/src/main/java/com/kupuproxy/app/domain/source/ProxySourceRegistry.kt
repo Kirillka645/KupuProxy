@@ -1,6 +1,7 @@
 package com.kupuproxy.app.domain.source
 
 import com.kupuproxy.app.data.remote.HttpSupport
+import com.kupuproxy.app.data.source.MtproXyzSource
 import com.kupuproxy.app.data.source.TelegramMegaSource
 import com.kupuproxy.app.data.source.TelegramWebPreviewSource
 import com.kupuproxy.app.data.source.UrlListProxySource
@@ -10,10 +11,12 @@ object ProxySourceRegistry {
 
     /**
      * Встроенные источники.
-     * TG: один быстрый [TelegramMegaSource] вместо 7 медленных каналов подряд.
+     * TG: [MtproXyzSource] (hookzof → mtpro.xyz) + [TelegramMegaSource].
      */
     fun builtIn(): List<ProxySource> = listOf(
-        // 1) TG mega — цель 50–120+ прокси из скрейпов каналов + live-зеркала
+        // hookzof/socks5_list → mtpro.xyz (~50 MTProto, без t.me)
+        MtproXyzSource(),
+        // TG mega — скрейпы каналов + зеркала
         TelegramMegaSource(),
 
         UrlListProxySource(

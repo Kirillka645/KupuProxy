@@ -41,6 +41,13 @@ class TelegramMegaSource(
             }
         }
 
+        // --- Phase 0: MTPro.XYZ / hookzof (~50 live proxies, no t.me) ---
+        try {
+            add(MtproXyzSource().fetch(client))
+            if (bag.size >= targetSoft) return bag.values.toList()
+        } catch (_: Exception) {
+        }
+
         // --- Phase 1: scraped lists from GitHub (no Telegram needed) ---
         val scrapeUrls = TelegramBypass.telegramScrapedListUrls()
         val scraped = HttpSupport.downloadAllParallel(
