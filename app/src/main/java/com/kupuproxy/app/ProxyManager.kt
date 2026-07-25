@@ -188,10 +188,18 @@ object ProxyManager {
             } catch (_: Exception) {
                 emptyList()
             }
+            val userExtra = try {
+                if (context != null) {
+                    com.kupuproxy.app.data.source.UserCustomSourceStore(context)
+                        .allEnabledSources()
+                } else emptyList()
+            } catch (_: Exception) {
+                emptyList()
+            }
             val registry = (
                 com.kupuproxy.app.domain.source.ProxySourceRegistry
                     .builtIn()
-                    .filter { it.enabledByDefault } + remoteExtra
+                    .filter { it.enabledByDefault } + remoteExtra + userExtra
                 ).distinctBy { it.id }
             val aggregator = com.kupuproxy.app.domain.aggregator.ProxyAggregator(client)
             var done = 0

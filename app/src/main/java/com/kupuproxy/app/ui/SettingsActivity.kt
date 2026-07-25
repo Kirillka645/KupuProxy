@@ -18,6 +18,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import android.content.Intent
+import androidx.compose.material3.ListItem
+import androidx.compose.foundation.clickable
 import com.kupuproxy.app.R
 import com.kupuproxy.app.core.util.TelegramIntents
 import com.kupuproxy.app.ui.components.channel.ChannelSettingsListItem
@@ -51,6 +54,16 @@ class SettingsActivity : ComponentActivity() {
                     ) {
                         ChannelSettingsListItem(
                             onClick = { TelegramIntents.openTelegramChannel(this@SettingsActivity) }
+                        )
+                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                        ListItem(
+                            headlineContent = { Text("Мои источники прокси") },
+                            supportingContent = { Text("Пользовательские URL для мега-скана") },
+                            modifier = Modifier.clickable {
+                                startActivity(
+                                    Intent(this@SettingsActivity, UserSourcesActivity::class.java)
+                                )
+                            }
                         )
                         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                         Text(

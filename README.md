@@ -14,7 +14,7 @@ Android-приложение для поиска и проверки **MTProto-�
 
 Плагин: `.kupu scan` / `.kupu chat` / `.kupu auto` / `.kupu update` (в чат пишет только `.kupu chat`).
 
-## Возможности (v1.4.0)
+## Возможности (v1.3.2)
 
 - **Мега-скан** с параллельным агрегатом источников (таймаут, retry, CDN-фолбэк)
 - **Мультиформатный парсер**: tg://, t.me, JSON, host:port:secret, HTML, YAML mtproto, markdown-таблицы, base64
