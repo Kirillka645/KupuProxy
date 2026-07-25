@@ -6,15 +6,25 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.view.View
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
+import com.kupuproxy.app.core.util.TelegramIntents
+import com.kupuproxy.app.data.local.prefs.PromoPreferences
+import com.kupuproxy.app.ui.AboutActivity
+import com.kupuproxy.app.ui.components.channel.EmptyStateWithChannel
+import com.kupuproxy.app.ui.theme.KupuProxyTheme
+import kotlinx.coroutines.launch
 
 class ProxyListActivity : AppCompatActivity() {
 
@@ -22,6 +32,8 @@ class ProxyListActivity : AppCompatActivity() {
     private lateinit var toolbar: MaterialToolbar
     private lateinit var fabCopyTop10: ExtendedFloatingActionButton
     private lateinit var tvSubtitle: TextView
+    private lateinit var emptyStateCompose: ComposeView
+    private lateinit var promoPreferences: PromoPreferences
 
     private var proxiesList: List<ProxyWithPing> = emptyList()
     private var filteredList: List<ProxyWithPing> = emptyList()
@@ -31,6 +43,7 @@ class ProxyListActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_proxy_list)
+        promoPreferences = PromoPreferences(this)
 
         toolbar = findViewById(R.id.toolbar)
         setSupportActionBar(toolbar)
@@ -51,20 +64,65 @@ class ProxyListActivity : AppCompatActivity() {
 
         filteredList = proxiesList
         tvSubtitle = findViewById(R.id.tvListSubtitle)
+        emptyStateCompose = findViewById(R.id.emptyStateCompose)
         updateSubtitle()
 
         recyclerView = findViewById(R.id.recyclerView)
         recyclerView.layoutManager = LinearLayoutManager(this)
-        recyclerView.adapter = ProxyAdapter(this, filteredList)
+        bindAdapter()
 
         fabCopyTop10 = findViewById(R.id.fabCopyTop10)
         fabCopyTop10.setOnClickListener { copyTop10Proxies() }
 
         setupToolbarMenu()
+        setupEmptyState()
+        refreshEmptyVisibility()
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() = finish()
         })
+    }
+
+    private fun bindAdapter() {
+        recyclerView.adapter = ProxyAdapter(this, filteredList) {
+            lifecycleScope.launch { maybeShowChannelInvite() }
+        }
+    }
+
+    private fun setupEmptyState() {
+        emptyStateCompose.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        emptyStateCompose.setContent {
+            KupuProxyTheme {
+                EmptyStateWithChannel(
+                    onOpenChannel = { TelegramIntents.openTelegramChannel(this@ProxyListActivity) }
+                )
+            }
+        }
+    }
+
+    private fun refreshEmptyVisibility() {
+        val empty = filteredList.isEmpty()
+        emptyStateCompose.visibility = if (empty) View.VISIBLE else View.GONE
+        recyclerView.visibility = if (empty) View.GONE else View.VISIBLE
+        fabCopyTop10.visibility = if (empty) View.GONE else View.VISIBLE
+    }
+
+    private suspend fun maybeShowChannelInvite() {
+        promoPreferences.recordSuccessfulConnect()
+        if (!promoPreferences.shouldShowInviteDialog()) return
+        promoPreferences.markInviteShown()
+        runOnUiThread {
+            MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.channel_invite_title)
+                .setMessage(R.string.channel_invite_body)
+                .setPositiveButton(R.string.channel_subscribe) { _, _ ->
+                    TelegramIntents.openTelegramChannel(this)
+                }
+                .setNegativeButton(R.string.later, null)
+                .show()
+        }
     }
 
     private fun updateSubtitle() {
@@ -117,8 +175,9 @@ class ProxyListActivity : AppCompatActivity() {
                 } else {
                     proxiesList.filter { it.pingMs in 1..maxPingFilter }
                 }
-                recyclerView.adapter = ProxyAdapter(this, filteredList)
+                bindAdapter()
                 updateSubtitle()
+                refreshEmptyVisibility()
             }
             .show()
     }
@@ -174,12 +233,18 @@ class ProxyListActivity : AppCompatActivity() {
             .setMessage(
                 "MTProto-прокси для Telegram.\n" +
                     "CDN-зеркала, профили Wi‑Fi/LTE, seed и кэш.\n\n" +
+                    "Канал: https://t.me/KupuProxy\n" +
                     "https://github.com/${BuildConfig.GITHUB_REPO}"
             )
             .setPositiveButton("GitHub") { _, _ ->
                 openUrl("https://github.com/${BuildConfig.GITHUB_REPO}")
             }
-            .setNegativeButton("Закрыть", null)
+            .setNeutralButton(R.string.channel_open) { _, _ ->
+                TelegramIntents.openTelegramChannel(this)
+            }
+            .setNegativeButton("О приложении") { _, _ ->
+                startActivity(Intent(this, AboutActivity::class.java))
+            }
             .show()
     }
 

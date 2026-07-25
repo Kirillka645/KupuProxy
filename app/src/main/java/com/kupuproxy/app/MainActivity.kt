@@ -8,15 +8,29 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.progressindicator.LinearProgressIndicator
+import com.kupuproxy.app.core.util.TelegramIntents
+import com.kupuproxy.app.data.local.prefs.PromoPreferences
+import com.kupuproxy.app.ui.AboutActivity
+import com.kupuproxy.app.ui.SettingsActivity
+import com.kupuproxy.app.ui.components.channel.ChannelPromoHost
+import com.kupuproxy.app.ui.theme.KupuProxyTheme
 import com.kupuproxy.app.updater.ApkDownloader
 import com.kupuproxy.app.updater.GitHubRelease
 import com.kupuproxy.app.updater.UpdateChecker
+import com.kupuproxy.app.work.ProxyRescanWorker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -45,10 +59,13 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvNetworkNow: TextView
     private lateinit var tvProfileHint: TextView
     private lateinit var profileToggle: MaterialButtonToggleGroup
+    private lateinit var channelPromoCompose: ComposeView
+    private lateinit var btnSettings: MaterialButton
 
     private val client = OkHttpClient()
     private lateinit var updateChecker: UpdateChecker
     private lateinit var apkDownloader: ApkDownloader
+    private lateinit var promoPreferences: PromoPreferences
     private var pendingUpdate: GitHubRelease? = null
 
     private val filePickerLauncher = registerForActivityResult(
@@ -62,12 +79,16 @@ class MainActivity : AppCompatActivity() {
 
         updateChecker = UpdateChecker(this, client)
         apkDownloader = ApkDownloader(this)
+        promoPreferences = PromoPreferences(this)
         initViews()
+        setupChannelPromo()
         setupProfileToggle()
         setupClickListeners()
         setupVersion()
         refreshNetworkLabel()
         checkForUpdates()
+        // optional background rescan every 6h
+        ProxyRescanWorker.schedule(this, 6)
     }
 
     override fun onResume() {
@@ -117,6 +138,31 @@ class MainActivity : AppCompatActivity() {
         tvNetworkNow = findViewById(R.id.tvNetworkNow)
         tvProfileHint = findViewById(R.id.tvProfileHint)
         profileToggle = findViewById(R.id.profileToggle)
+        channelPromoCompose = findViewById(R.id.channelPromoCompose)
+        btnSettings = findViewById(R.id.btnSettings)
+    }
+
+    private fun setupChannelPromo() {
+        channelPromoCompose.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        channelPromoCompose.setContent {
+            KupuProxyTheme {
+                var dismissed by remember { mutableStateOf(false) }
+                val scope = rememberCoroutineScope()
+                // load dismissed state once
+                androidx.compose.runtime.LaunchedEffect(Unit) {
+                    dismissed = promoPreferences.isPromoDismissed()
+                }
+                ChannelPromoHost(
+                    dismissed = dismissed,
+                    onDismissForever = {
+                        dismissed = true
+                        scope.launch { promoPreferences.dismissPromoCard() }
+                    }
+                )
+            }
+        }
     }
 
     private fun setupVersion() {
@@ -226,6 +272,13 @@ class MainActivity : AppCompatActivity() {
 
         btnHelp.setOnClickListener { showHelpDialog() }
         btnTheme.setOnClickListener { showThemeDialog() }
+        btnSettings.setOnClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java))
+        }
+        btnSupport.setOnLongClickListener {
+            startActivity(Intent(this, AboutActivity::class.java))
+            true
+        }
     }
 
     private fun startScan(mode: String, title: String, sourceId: String = "") {
@@ -318,7 +371,12 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton("GitHub") { _, _ ->
                 openUrl("https://github.com/${BuildConfig.GITHUB_REPO}")
             }
-            .setNeutralButton("Закрыть", null)
+            .setNeutralButton(R.string.channel_open) { _, _ ->
+                TelegramIntents.openTelegramChannel(this)
+            }
+            .setNegativeButton("О приложении") { _, _ ->
+                startActivity(Intent(this, AboutActivity::class.java))
+            }
             .show()
     }
 
@@ -364,8 +422,8 @@ class MainActivity : AppCompatActivity() {
                     updateChecker.openReleasePage(release.htmlUrl)
                 }
             }
-            .setNeutralButton("GitHub") { _, _ ->
-                updateChecker.openReleasePage(release.htmlUrl)
+            .setNeutralButton(R.string.channel_changelog) { _, _ ->
+                TelegramIntents.openTelegramChannel(this)
             }
             .setNegativeButton("Позже", null)
             .show()

@@ -18,7 +18,8 @@ import com.google.android.material.card.MaterialCardView
 
 class ProxyAdapter(
     private val context: Context,
-    private val proxies: List<ProxyWithPing>
+    private val proxies: List<ProxyWithPing>,
+    private val onConnected: (() -> Unit)? = null
 ) : RecyclerView.Adapter<ProxyAdapter.ProxyViewHolder>() {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ProxyViewHolder {
@@ -100,6 +101,7 @@ class ProxyAdapter(
             val openTg = {
                 try {
                     context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(proxy.url)))
+                    onConnected?.invoke()
                 } catch (_: Exception) {
                     Toast.makeText(context, R.string.telegram_missing, Toast.LENGTH_LONG).show()
                 }

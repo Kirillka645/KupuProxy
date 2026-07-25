@@ -181,12 +181,45 @@ object ProxyManager {
         val hits = linkedMapOf<String, Int>()
         val mirrors = mutableListOf<String>()
 
-        SOURCES.forEachIndexed { index, source ->
-            val (list, mirror) = fetchSource(source)
-            hits[source.name] = list.size
-            all.addAll(list)
-            if (mirror != null) mirrors.add("${source.name} ← $mirror")
-            onProgress(index + 1, SOURCES.size, source.name, list.size)
+        // Новый агрегатор (parallel + retry + multi-format parse)
+        try {
+            val remoteExtra = try {
+                com.kupuproxy.app.data.source.RemoteManifestLoader.loadExtraSources(client)
+            } catch (_: Exception) {
+                emptyList()
+            }
+            val registry = (
+                com.kupuproxy.app.domain.source.ProxySourceRegistry
+                    .builtIn()
+                    .filter { it.enabledByDefault } + remoteExtra
+                ).distinctBy { it.id }
+            val aggregator = com.kupuproxy.app.domain.aggregator.ProxyAggregator(client)
+            var done = 0
+            val total = registry.size
+            val aggregate = aggregator.collect(registry) { result ->
+                done++
+                val count = when (result) {
+                    is com.kupuproxy.app.domain.model.SourceResult.Success -> result.entries.size
+                    is com.kupuproxy.app.domain.model.SourceResult.Failure -> 0
+                }
+                hits[result.displayName] = count
+                if (result is com.kupuproxy.app.domain.model.SourceResult.Success) {
+                    result.mirrorUsed?.let { mirrors.add("${result.displayName} ← $it") }
+                    all.addAll(result.entries.map { it.url })
+                }
+                onProgress(done, total, result.displayName, count)
+            }
+            // ensure all urls from endpoints
+            all.addAll(aggregate.proxies.map { it.url })
+        } catch (_: Exception) {
+            // fallback legacy sequential
+            SOURCES.forEachIndexed { index, source ->
+                val (list, mirror) = fetchSource(source)
+                hits[source.name] = list.size
+                all.addAll(list)
+                if (mirror != null) mirrors.add("${source.name} ← $mirror")
+                onProgress(index + 1, SOURCES.size, source.name, list.size)
+            }
         }
 
         var fromCache = false
@@ -252,6 +285,12 @@ object ProxyManager {
     }
 
     fun parseProxyLinks(body: String): List<String> {
+        // Multi-format parser (links, JSON, host:port:secret, HTML, YAML, tables, base64)
+        val parsed = com.kupuproxy.app.domain.parser.ProxyParser.parse(body)
+            .map { it.url }
+            .filter { it.startsWith("tg://proxy?") || it.startsWith("tg://socks?") }
+        if (parsed.isNotEmpty()) return parsed.distinct().take(MAX_PROXIES)
+
         val result = LinkedHashSet<String>()
         LINK_REGEX.findAll(body).forEach { match ->
             val raw = match.value.trim().trimEnd(')', ']', ',', ';', '"', '\'')
@@ -260,7 +299,6 @@ object ProxyManager {
                 result.add(normalized)
             }
         }
-        // also accept plain server=... lines if any
         body.lineSequence().forEach { line ->
             val t = line.trim()
             if (t.startsWith("tg://proxy?") || t.startsWith("tg://socks?")) {

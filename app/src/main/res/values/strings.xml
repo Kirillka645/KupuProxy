@@ -32,4 +32,29 @@
     <string name="no_proxies">Нет прокси для копирования</string>
     <string name="help_message">KupuProxy загружает MTProto-прокси из открытых источников, проверяет доступность и сортирует по пингу.\n\n• До 50 проверок параллельно\n• Показывает только рабочие сервера\n• Чем ниже пинг — тем быстрее\n\nИсточники:\n• Kort0881 — RU / EU\n• SurfboardV2ray — большой список\n\nСкачать все — объединяет источники без проверки.\nПроверить из файла — ваш .txt со ссылками tg://proxy.</string>
     <string name="disclaimer">Работоспособность прокси в Telegram не гарантируется. Используйте на свой страх и риск.</string>
+
+    <string name="channel_card_title">Канал KupuProxy</string>
+    <string name="channel_card_subtitle">Свежие прокси, апдейты и новости</string>
+    <string name="channel_subscribe">Подписаться</string>
+    <string name="channel_dismiss">Скрыть</string>
+    <string name="channel_open">Открыть канал</string>
+    <string name="channel_empty_title">Ничего не нашлось</string>
+    <string name="channel_empty_body">Рабочие прокси регулярно выкладываем в канале @KupuProxy</string>
+    <string name="channel_settings_title">Наш Telegram-канал</string>
+    <string name="channel_settings_sub">@KupuProxy — прокси, апдейты, новости</string>
+    <string name="channel_about_title">Telegram-канал</string>
+    <string name="channel_qr_cd">QR-код канала</string>
+    <string name="channel_invite_title">Подпишитесь на канал</string>
+    <string name="channel_invite_body">Спасибо, что пользуетесь KupuProxy! В @KupuProxy — свежие прокси и обновления.</string>
+    <string name="channel_changelog">Changelog в канале</string>
+    <string name="channel_open_failed">Не удалось открыть Telegram</string>
+    <string name="copy_link">Скопировать ссылку</string>
+    <string name="link_copied">Ссылка скопирована</string>
+    <string name="later">Позже</string>
+    <string name="settings_title">Настройки</string>
+    <string name="settings_hint">Источники прокси подключаются при мега-скане. Канал — без рекламы и трекеров.</string>
+    <string name="rescan_channel_name">Фоновый скан</string>
+    <string name="rescan_done_title">KupuProxy: скан завершён</string>
+    <string name="rescan_done_body">Найдено прокси: %1$d</string>
+    <string name="sources_summary">Источники: %1$d из %2$d ответили</string>
 </resources>

@@ -112,11 +112,27 @@
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
+        <!-- Channel promo (Compose) -->
+        <androidx.compose.ui.platform.ComposeView
+            android:id="@+id/channelPromoCompose"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnSettings"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="@string/settings_title"
+            android:textAllCaps="false" />
+
         <!-- Network profile -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
+            android:layout_marginTop="12dp"
             android:text="Профиль сети"
             android:textColor="@color/kupu_on_surface"
             android:textSize="18sp"
