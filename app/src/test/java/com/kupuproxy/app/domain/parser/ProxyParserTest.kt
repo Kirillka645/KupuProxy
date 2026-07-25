@@ -37,6 +37,23 @@ class ProxyParserTest {
     }
 
     @Test
+    fun parseQueryTripleWithoutScheme() {
+        val body = """data server=1.2.3.4&port=443&secret=dd0123456789abcdef0123456789abcdef junk"""
+        val r = ProxyParser.parse(body)
+        assertEquals(1, r.size)
+        assertEquals("1.2.3.4", r[0].host)
+    }
+
+    @Test
+    fun parseAmpEscapedHtmlLink() {
+        val body =
+            """href="tg://proxy?server=9.9.9.9&amp;port=8443&amp;secret=0123456789abcdef0123456789abcdef""""
+        val r = ProxyParser.parse(body)
+        assertEquals(1, r.size)
+        assertEquals(8443, r[0].port)
+    }
+
+    @Test
     fun parseHostPortSecretLines() {
         val text = """
             # comment

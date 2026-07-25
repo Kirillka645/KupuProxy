@@ -9,40 +9,33 @@ import com.kupuproxy.app.domain.source.ProxySource
 import okhttp3.OkHttpClient
 
 /**
- * Публичные Telegram-каналы без API-ключа.
- *
- * При блокировке t.me ходим через зеркала (Jina reader, RSSHub, allorigins, telesco.pe).
- * Парсер вытаскивает tg:// / t.me/proxy из HTML, RSS и markdown.
+ * Один публичный TG-канал через **параллельный race** зеркал (не последовательный обход).
+ * Для мега-скана предпочтительнее [TelegramMegaSource].
  */
 class TelegramWebPreviewSource(
     private val channelUsername: String,
     override val displayName: String = "TG @$channelUsername",
-    override val enabledByDefault: Boolean = true
+    override val enabledByDefault: Boolean = false
 ) : ProxySource {
 
     override val id: String = "tg_$channelUsername"
     override val kind: SourceKind = SourceKind.TELEGRAM_CHANNEL
 
     override suspend fun fetch(client: OkHttpClient): List<RawProxyEntry> {
-        val urls = TelegramBypass.channelPreviewUrls(channelUsername)
-        val downloaded = HttpSupport.downloadWithRetry(
-            client = client,
+        val fast = HttpSupport.fastClient()
+        val urls = TelegramBypass.channelFastUrls(channelUsername)
+        val raced = HttpSupport.downloadRace(
+            client = fast,
             urls = urls,
-            attempts = 2,
             headers = TelegramBypass.browserHeaders(),
-            minUsefulBytes = 80
+            minUsefulBytes = 80,
+            perUrlTimeoutMs = 6_500L,
+            overallTimeoutMs = 10_000L
         ) ?: return emptyList()
 
-        val body = downloaded.first
-        // jina returns markdown; RSS is XML — both fine for ProxyParser
+        val body = TelegramMegaSource.normalizeBody(raced.first)
         val parsed = ProxyParser.parse(body, id, displayName)
         if (parsed.isNotEmpty()) return parsed
-
-        // Sometimes mirrors wrap content; second pass on unescaped links
-        val loose = body
-            .replace("\\u0026", "&")
-            .replace("&amp;", "&")
-            .replace("\\/", "/")
-        return ProxyParser.parse(loose, id, displayName)
+        return ProxyParser.parse(body, id, displayName)
     }
 }

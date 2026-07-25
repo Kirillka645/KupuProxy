@@ -1,14 +1,21 @@
 package com.kupuproxy.app.domain.source
 
+import com.kupuproxy.app.data.remote.HttpSupport
+import com.kupuproxy.app.data.source.TelegramMegaSource
 import com.kupuproxy.app.data.source.TelegramWebPreviewSource
 import com.kupuproxy.app.data.source.UrlListProxySource
-import com.kupuproxy.app.data.remote.HttpSupport
 import com.kupuproxy.app.domain.model.SourceKind
 
 object ProxySourceRegistry {
 
-    /** Built-in seed registry (можно дополнить remote manifest). */
+    /**
+     * Встроенные источники.
+     * TG: один быстрый [TelegramMegaSource] вместо 7 медленных каналов подряд.
+     */
     fun builtIn(): List<ProxySource> = listOf(
+        // 1) TG mega — цель 50–120+ прокси из скрейпов каналов + live-зеркала
+        TelegramMegaSource(),
+
         UrlListProxySource(
             id = "solispirit",
             displayName = "SoliSpirit Mega",
@@ -69,25 +76,17 @@ object ProxySourceRegistry {
                 "Yagami200", "free-mtproto-proxies", "main", "proxies.json"
             )
         ),
+        // Отдельные каналы — off by default (mega уже покрывает)
+        TelegramWebPreviewSource("ProxyMTProto", enabledByDefault = false),
+        TelegramWebPreviewSource("mtprotoproxy", enabledByDefault = false),
+        TelegramWebPreviewSource("KupuProxy", "TG @KupuProxy", enabledByDefault = false),
         UrlListProxySource(
             id = "paste_example_disabled",
             displayName = "Pastebin (custom)",
             urls = emptyList(),
             kind = SourceKind.HTML_PAGE,
             enabledByDefault = false
-        ),
-        // TG-каналы: при блокировке t.me — зеркала (Jina / RSSHub / allorigins)
-        // Держим умеренный набор, чтобы не жечь сеть при недоступности всех зеркал.
-        TelegramWebPreviewSource("ProxyMTProto"),
-        TelegramWebPreviewSource("mtprotoproxy"),
-        TelegramWebPreviewSource("ProxyOFF"),
-        TelegramWebPreviewSource("proxies_for_telegram"),
-        TelegramWebPreviewSource("MTProto_proxy"),
-        TelegramWebPreviewSource("FreeMTProto"),
-        TelegramWebPreviewSource("KupuProxy", "TG @KupuProxy", enabledByDefault = true),
-        TelegramWebPreviewSource("proxytelegram", enabledByDefault = false),
-        TelegramWebPreviewSource("proxy_mtproto_list", enabledByDefault = false),
-        TelegramWebPreviewSource("socks5_list", enabledByDefault = false)
+        )
     )
 
     fun byId(id: String): ProxySource? = builtIn().find { it.id == id }
@@ -95,12 +94,6 @@ object ProxySourceRegistry {
     fun enabled(defaults: Map<String, Boolean> = emptyMap()): List<ProxySource> {
         return builtIn().filter { src ->
             defaults[src.id] ?: src.enabledByDefault
-        }.filter {
-            // skip empty URL list placeholders
-            when (it) {
-                is UrlListProxySource -> true
-                else -> true
-            }
         }
     }
 }

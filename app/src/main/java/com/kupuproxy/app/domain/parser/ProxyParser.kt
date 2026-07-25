@@ -14,8 +14,13 @@ import java.util.Locale
 object ProxyParser {
 
     private val LINK_REGEX = Regex(
-        """(?:tg://(?:proxy|socks)|https?://t\.me/(?:proxy|socks))\?[^\s<>"'`)\]#,]+""",
+        """(?:tg://(?:proxy|socks)|https?://(?:t\.me|telegram\.me)/(?:proxy|socks))\?[^\s<>"'`)\]#,]+""",
         RegexOption.IGNORE_CASE
+    )
+
+    /** server=…&port=…&secret=… даже без tg:// (HTML/JSON/markdown) */
+    private val QUERY_TRIPLE = Regex(
+        """(?i)server=([^\s&"'<>]+)&port=(\d{2,5})&secret=([^\s&"'<>]+)"""
     )
 
     private val HOST_PORT_SECRET = Regex(
@@ -42,19 +47,53 @@ object ProxyParser {
             }
         }
 
-        addAll(parseLinks(decoded))
-        addAll(parseJson(decoded))
-        addAll(parseLineFormat(decoded))
-        addAll(parseHtml(decoded))
-        addAll(parseYamlMtproto(decoded))
-        addAll(parseMarkdownTables(decoded))
+        val unescaped = unescapeProxyText(decoded)
+        addAll(parseLinks(unescaped))
+        addAll(parseQueryTriples(unescaped))
+        addAll(parseJson(unescaped))
+        addAll(parseLineFormat(unescaped))
+        addAll(parseHtml(unescaped))
+        addAll(parseYamlMtproto(unescaped))
+        addAll(parseMarkdownTables(unescaped))
 
         return collected.values.toList()
+    }
+
+    fun unescapeProxyText(text: String): String {
+        return text
+            .replace("\\u0026", "&")
+            .replace("&amp;", "&")
+            .replace("&#38;", "&")
+            .replace("&quot;", "\"")
+            .replace("\\/", "/")
+            .replace("%3A", ":", ignoreCase = true)
+            .replace("%2F", "/", ignoreCase = true)
+            .replace("%3F", "?", ignoreCase = true)
+            .replace("%3D", "=", ignoreCase = true)
+            .replace("%26", "&", ignoreCase = true)
     }
 
     fun parseLinks(text: String): List<RawProxyEntry> {
         return LINK_REGEX.findAll(text).mapNotNull { m ->
             normalizeLink(m.value)?.let { fromUrl(it) }
+        }.toList()
+    }
+
+    fun parseQueryTriples(text: String): List<RawProxyEntry> {
+        return QUERY_TRIPLE.findAll(text).mapNotNull { m ->
+            val host = m.groupValues[1].trim()
+            val port = m.groupValues[2].toIntOrNull() ?: return@mapNotNull null
+            val secret = m.groupValues[3].trim().trimEnd(')', ']', '"', '\'', '\\')
+            if (!isValidPort(port) || !looksLikeSecret(secret)) return@mapNotNull null
+            val type = classifySecret(secret)
+            RawProxyEntry(
+                url = toTgUrl(host, port, secret),
+                host = host,
+                port = port,
+                secret = secret,
+                secretType = type,
+                sniDomain = extractSni(secret, type)
+            )
         }.toList()
     }
 
