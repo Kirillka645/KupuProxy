@@ -52,7 +52,7 @@ __description__ = (
     "Поиск и проверка MTProto-прокси (как KupuProxy Android).\n"
     "На экране «Прокси» — строка **KupuProxy** (TextCheckCell, как в Proxy Tools).\n"
     "Команды: `.kupu auto` · `.kupu chat` · `.kupu add` · `.kupu del` · `.kupu update`\n"
-    "Источники: SoliSpirit, Yagami200, Kort, Argh94…\n"
+    "Источники: SoliSpirit, Kort, Argh94, Surfboard, ALIILAPRO…\n"
     "Самообновление с GitHub."
 )
 __author__ = "@Kirillka645"
@@ -81,16 +81,6 @@ SOURCES: List[Dict[str, Any]] = [
             "https://fastly.jsdelivr.net/gh/SoliSpirit/mtproto@master/all_proxies.txt",
             "https://raw.githack.com/SoliSpirit/mtproto/master/all_proxies.txt",
             "https://raw.githubusercontent.com/SoliSpirit/mtproto/master/all_proxies.txt",
-        ],
-    },
-    {
-        "id": "yagami",
-        "name": "Yagami200",
-        "urls": [
-            "https://raw.githubusercontent.com/Yagami200/free-mtproto-proxies/main/all_proxies.txt",
-            "https://raw.githubusercontent.com/Yagami200/free-mtproto-proxies/main/proxies.json",
-            "https://cdn.jsdelivr.net/gh/Yagami200/free-mtproto-proxies@main/proxies.json",
-            "https://cdn.jsdelivr.net/gh/Yagami200/free-mtproto-proxies@main/all_proxies.txt",
         ],
     },
     {
@@ -897,7 +887,7 @@ class KupuProxyPlugin(BasePlugin):
             Divider(),
             Text(
                 text="Источники",
-                subtext="SoliSpirit · Yagami200 · Kort · Argh94 · Surfboard · ALIILAPRO",
+                subtext="SoliSpirit · Kort · Argh94 · Surfboard · ALIILAPRO",
             ),
         ]
 

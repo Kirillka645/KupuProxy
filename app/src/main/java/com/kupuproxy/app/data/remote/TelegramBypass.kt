@@ -50,8 +50,6 @@ object TelegramBypass {
         val lists = listOf(
             Triple("Argh94", "telegram-proxy-scraper", "proxy.txt") to "main",
             Triple("SoliSpirit", "mtproto", "all_proxies.txt") to "master",
-            Triple("Yagami200", "free-mtproto-proxies", "all_proxies.txt") to "main",
-            Triple("Yagami200", "free-mtproto-proxies", "proxies.json") to "main",
             Triple("ALIILAPRO", "MTProtoProxy", "mtproto.txt") to "main",
             Triple("Surfboardv2ray", "TGProto", "proxies.txt") to "main",
             Triple("Surfboardv2ray", "TGProto", "proxies-tested.txt") to "main",

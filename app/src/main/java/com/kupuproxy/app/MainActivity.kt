@@ -79,8 +79,10 @@ import com.kupuproxy.app.ui.components.channel.ChannelPromoHost
 import com.kupuproxy.app.ui.theme.KupuProxyTheme
 import com.kupuproxy.app.updater.ApkDownloader
 import com.kupuproxy.app.updater.GitHubRelease
+import com.kupuproxy.app.updater.UpdateCheckResult
 import com.kupuproxy.app.updater.UpdateChecker
 import com.kupuproxy.app.work.ProxyRescanWorker
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -102,7 +104,9 @@ class MainActivity : AppCompatActivity() {
     private var themeDialogVisible by mutableStateOf(false)
     private var helpDialogVisible by mutableStateOf(false)
     private var updateRelease by mutableStateOf<GitHubRelease?>(null)
-    private var pendingUpdate: GitHubRelease? = null
+    private var updateCheckInProgress by mutableStateOf(false)
+    private var updateCheckError by mutableStateOf<String?>(null)
+    private var pendingUpdateFile: File? = null
     private var downloadProgress by mutableIntStateOf(-1)
     private var downloadError by mutableStateOf<String?>(null)
 
@@ -125,17 +129,24 @@ class MainActivity : AppCompatActivity() {
         }
 
         lifecycleScope.launch { promoDismissed = promoPreferences.isPromoDismissed() }
-        checkForUpdates()
+        if (!handleManualUpdateCheck(intent)) checkForUpdates()
         ProxyRescanWorker.schedule(this, com.kupuproxy.app.work.ProxyRefreshPreferences.load(this))
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleManualUpdateCheck(intent)
     }
 
     override fun onResume() {
         super.onResume()
         refreshHomeState()
-        pendingUpdate?.let { release ->
-            if (apkDownloader.canInstallPackages()) {
-                pendingUpdate = null
-                startApkDownloadAndInstall(release)
+        pendingUpdateFile?.let { file ->
+            if (apkDownloader.canInstallPackages() && apkDownloader.isVerifiedUpdateFile(file)) {
+                pendingUpdateFile = null
+                runCatching { apkDownloader.installApk(this, file) }
+                    .onFailure { downloadError = it.message ?: "Ошибка запуска установщика" }
             }
         }
     }
@@ -274,13 +285,38 @@ class MainActivity : AppCompatActivity() {
         if (themeDialogVisible) ThemeDialog()
         if (helpDialogVisible) HelpDialog()
         updateRelease?.let { UpdateDialog(it) }
+        if (updateCheckInProgress) UpdateCheckDialog()
+        updateCheckError?.let { error ->
+            AlertDialog(
+                onDismissRequest = { updateCheckError = null },
+                title = { Text("Не удалось проверить обновление") },
+                text = { Text(error) },
+                confirmButton = {
+                    TextButton(onClick = {
+                        updateCheckError = null
+                        checkForUpdates(showResult = true)
+                    }) { Text("Повторить") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { updateCheckError = null }) { Text("Закрыть") }
+                }
+            )
+        }
         if (downloadProgress >= 0) DownloadDialog()
         downloadError?.let { error ->
             AlertDialog(
                 onDismissRequest = { downloadError = null },
                 title = { Text("Не удалось обновить") },
                 text = { Text(error) },
-                confirmButton = { TextButton(onClick = { downloadError = null }) { Text("Закрыть") } }
+                confirmButton = {
+                    TextButton(onClick = {
+                        downloadError = null
+                        updateRelease?.let(::startApkDownloadAndInstall)
+                    }) { Text("Повторить") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { downloadError = null }) { Text("Закрыть") }
+                }
             )
         }
     }
@@ -517,16 +553,31 @@ class MainActivity : AppCompatActivity() {
             text = { Text(release.changelog.ifBlank { "Доступна новая версия KupuProxy" }.take(1800)) },
             confirmButton = {
                 TextButton(onClick = {
-                    updateRelease = null
                     if (hasApk) {
-                        if (!apkDownloader.canInstallPackages()) {
-                            pendingUpdate = release
-                            apkDownloader.openInstallPermissionSettings(this)
-                        } else startApkDownloadAndInstall(release)
-                    } else updateChecker.openReleasePage(release.htmlUrl)
+                        startApkDownloadAndInstall(release)
+                    } else {
+                        updateRelease = null
+                        updateChecker.openReleasePage(release.htmlUrl)
+                    }
                 }) { Text(if (hasApk) "Скачать и установить" else "Открыть GitHub") }
             },
             dismissButton = { TextButton(onClick = { updateRelease = null }) { Text("Позже") } }
+        )
+    }
+
+    @Composable
+    private fun UpdateCheckDialog() {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("Проверка обновления") },
+            text = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 3.dp)
+                    Spacer(Modifier.size(12.dp))
+                    Text("Получаю данные о последнем релизе…")
+                }
+            },
+            confirmButton = {}
         )
     }
 
@@ -636,12 +687,38 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
-    private fun checkForUpdates() {
+    private fun handleManualUpdateCheck(intent: Intent): Boolean {
+        if (!intent.getBooleanExtra(EXTRA_CHECK_UPDATES, false)) return false
+        intent.removeExtra(EXTRA_CHECK_UPDATES)
+        checkForUpdates(showResult = true)
+        return true
+    }
+
+    private fun checkForUpdates(showResult: Boolean = false) {
         lifecycleScope.launch {
+            if (showResult) updateCheckInProgress = true
             try {
-                val release = updateChecker.checkForUpdate(BuildConfig.VERSION_NAME)
-                if (release != null) updateRelease = release
-            } catch (_: Exception) {
+                when (val result = updateChecker.checkForUpdate(BuildConfig.VERSION_NAME)) {
+                    is UpdateCheckResult.UpdateAvailable -> {
+                        updateCheckError = null
+                        updateRelease = result.release
+                    }
+                    UpdateCheckResult.UpToDate -> {
+                        updateCheckError = null
+                        if (showResult) {
+                            Toast.makeText(
+                                this@MainActivity,
+                                "Установлена последняя версия",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
+                    is UpdateCheckResult.Failure -> {
+                        if (showResult) updateCheckError = result.message
+                    }
+                }
+            } finally {
+                updateCheckInProgress = false
             }
         }
     }
@@ -655,7 +732,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 downloadProgress = 100
                 if (!apkDownloader.canInstallPackages()) {
-                    pendingUpdate = release
+                    pendingUpdateFile = file
                     downloadProgress = -1
                     apkDownloader.openInstallPermissionSettings(this@MainActivity)
                     return@launch
@@ -694,8 +771,7 @@ class MainActivity : AppCompatActivity() {
         HomeSource("shablin_valid", "Shablin latency", "Живые MTProto, отсортированные по задержке", Icons.Default.Speed),
         HomeSource("dubblebyte", "Dubblebyte MTProto", "Дополнительный регулярно обновляемый список", Icons.Default.Public),
         HomeSource("surfboard", "SurfboardV2ray", "Основной и предварительно проверенный списки", Icons.Default.Speed),
-        HomeSource("argh94_scraper", "Argh94 Scraper", "Агрегация публичных каналов", Icons.Default.Search),
-        HomeSource("yagami200", "Yagami200 free", "TXT и JSON с регулярным обновлением", Icons.Default.Download)
+        HomeSource("argh94_scraper", "Argh94 Scraper", "Агрегация публичных каналов", Icons.Default.Search)
     )
 
     companion object {
@@ -710,6 +786,7 @@ class MainActivity : AppCompatActivity() {
         const val EXTRA_PROXIES = "proxies_list"
         const val EXTRA_MODE = "scan_mode"
         const val EXTRA_PROFILE = "profile_mode"
+        const val EXTRA_CHECK_UPDATES = "check_updates"
         const val MODE_MEGA = "mega"
         const val MODE_SOURCE = "source"
         const val MODE_SEED = "seed"

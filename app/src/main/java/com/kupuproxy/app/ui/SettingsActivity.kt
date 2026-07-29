@@ -31,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.kupuproxy.app.MainActivity
 import com.kupuproxy.app.R
 import com.kupuproxy.app.core.util.TelegramIntents
 import com.kupuproxy.app.ui.components.channel.ChannelSettingsListItem
@@ -136,6 +137,35 @@ class SettingsActivity : ComponentActivity() {
                             modifier = Modifier.clickable {
                                 startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/kort0881/telegram-proxy-collector")))
                             }
+                        )
+                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                        ListItem(
+                            headlineContent = { Text("Проверить обновления приложения") },
+                            supportingContent = {
+                                Text(
+                                    "Проверить GitHub Releases и безопасно установить подписанный APK",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            },
+                            trailingContent = {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                    contentDescription = null
+                                )
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    startActivity(
+                                        Intent(this@SettingsActivity, MainActivity::class.java).apply {
+                                            addFlags(
+                                                Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                                                    Intent.FLAG_ACTIVITY_SINGLE_TOP
+                                            )
+                                            putExtra(MainActivity.EXTRA_CHECK_UPDATES, true)
+                                        }
+                                    )
+                                }
                         )
                         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                         Text(
