@@ -96,6 +96,7 @@ class MainActivity : AppCompatActivity() {
     private var selectedProfile by mutableStateOf(NetworkProfileMode.AUTO)
     private var networkLabel by mutableStateOf("")
     private var counts by mutableStateOf(HomeCounts())
+    private var kortStatus by mutableStateOf(ProxyCache.KortStatus())
     private var statusText by mutableStateOf("Готов к поиску прокси")
     private var promoDismissed by mutableStateOf<Boolean?>(null)
     private var themeDialogVisible by mutableStateOf(false)
@@ -125,7 +126,7 @@ class MainActivity : AppCompatActivity() {
 
         lifecycleScope.launch { promoDismissed = promoPreferences.isPromoDismissed() }
         checkForUpdates()
-        ProxyRescanWorker.schedule(this, 6)
+        ProxyRescanWorker.schedule(this, com.kupuproxy.app.work.ProxyRefreshPreferences.load(this))
     }
 
     override fun onResume() {
@@ -203,6 +204,7 @@ class MainActivity : AppCompatActivity() {
                         )
                     }
                 }
+                item { KortCollectorCard(kortStatus) }
                 item { SectionTitle("Быстрый старт", "Выберите один источник или запустите полный сбор") }
                 items(homeSources, key = HomeSource::id) { source ->
                     ActionCard(
@@ -319,6 +321,58 @@ class MainActivity : AppCompatActivity() {
     }
 
     @OptIn(ExperimentalMaterial3Api::class)
+    @Composable
+    private fun KortCollectorCard(status: ProxyCache.KortStatus) {
+        val age = if (status.refreshedAtMs <= 0) {
+            "ещё не обновлялся"
+        } else {
+            val minutes = ((System.currentTimeMillis() - status.refreshedAtMs).coerceAtLeast(0) / 60_000)
+            when {
+                minutes < 60 -> "$minutes мин назад"
+                minutes < 1_440 -> "${minutes / 60} ч назад"
+                else -> "${minutes / 1_440} дн назад"
+            }
+        }
+        Card(shape = RoundedCornerShape(20.dp)) {
+            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Public, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.size(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Kort Verified Collector", fontWeight = FontWeight.Bold)
+                        Text(
+                            "${if (status.isStale()) "Данные устарели" else "Обновлено $age"} · ${status.proxyCount} MTProto",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (status.isStale()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(
+                        "Все" to "kort_verified",
+                        "RU" to "kort_ru",
+                        "EU" to "kort_eu",
+                        "US" to "kort_us",
+                        "Asia" to "kort_asia"
+                    ).forEach { (label, id) ->
+                        AssistChip(
+                            onClick = { startScan(MODE_SOURCE, "Kort $label", id) },
+                            label = { Text("$label ${status.regionalCounts[label.lowercase()].orEmptyCount(label, status)}") }
+                        )
+                    }
+                }
+                status.error?.let {
+                    Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                }
+            }
+        }
+    }
+
+    private fun Int?.orEmptyCount(label: String, status: ProxyCache.KortStatus): String {
+        if (label == "Все") return status.proxyCount.takeIf { it > 0 }?.toString().orEmpty()
+        return this?.takeIf { it > 0 }?.toString().orEmpty()
+    }
+
     @Composable
     private fun ProfileSelector(selected: NetworkProfileMode, onSelected: (NetworkProfileMode) -> Unit) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -504,6 +558,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun refreshHomeState() {
         val settings = ProfileSettings.forMode(selectedProfile, this)
+        kortStatus = ProxyCache.loadKortStatus(this)
         networkLabel = "${ProfileSettings.currentLabel(this)} · ${settings.label}"
         counts = HomeCounts(
             wifi = ProxyCache.loadWorking(this, NetworkProfileMode.WIFI).size,
@@ -636,8 +691,8 @@ class MainActivity : AppCompatActivity() {
 
     private val homeSources = listOf(
         HomeSource("solispirit", "SoliSpirit Mega", "Большой автообновляемый список", Icons.Default.Public),
-        HomeSource("kort_ru", "Россия (Kort)", "Прокси с маскировкой под RU-сервисы", Icons.Default.Shield),
-        HomeSource("kort_eu", "Европа (Kort)", "Европейские точки и CDN-домены", Icons.Default.Public),
+        HomeSource("shablin_valid", "Shablin latency", "Живые MTProto, отсортированные по задержке", Icons.Default.Speed),
+        HomeSource("dubblebyte", "Dubblebyte MTProto", "Дополнительный регулярно обновляемый список", Icons.Default.Public),
         HomeSource("surfboard", "SurfboardV2ray", "Основной и предварительно проверенный списки", Icons.Default.Speed),
         HomeSource("argh94_scraper", "Argh94 Scraper", "Агрегация публичных каналов", Icons.Default.Search),
         HomeSource("yagami200", "Yagami200 free", "TXT и JSON с регулярным обновлением", Icons.Default.Download)

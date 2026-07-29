@@ -1,0 +1,46 @@
+name: Mirror proxy feeds
+
+on:
+  schedule:
+    - cron: "17 */4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mirror-proxy-feeds
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Download and validate feeds
+        run: python .github/scripts/mirror_proxy_feeds.py
+
+      - name: Commit changed feeds
+        run: |
+          git add proxy-feeds
+          if git diff --cached --quiet; then
+            echo "Proxy feeds are unchanged"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(feeds): refresh proxy mirrors"
+          git pull --rebase origin main
+          git push origin HEAD:main

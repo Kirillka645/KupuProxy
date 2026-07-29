@@ -14,8 +14,11 @@ Android-приложение для поиска и проверки **MTProto-�
 
 Плагин: `.kupu scan` / `.kupu chat` / `.kupu auto` / `.kupu update` (в чат пишет только `.kupu chat`).
 
-## Возможности (v1.3.3.3)
+## Возможности (v1.3.3.4)
 
+- **Kort Verified Collector**: единый автообновляемый MTProto snapshot, регионы RU/EU/US/Asia, upstream freshness и metadata-aware приоритет
+- Фоновое обновление каждые 3/6/12/24 часа через WorkManager с выбором любой или только безлимитной сети
+- Внешняя проверка используется только для приоритета: итог всегда подтверждает собственный **MTProto handshake KupuProxy**
 - Полностью обновлённый интерфейс **Jetpack Compose + Material 3**
 - **Мега-скан** с единым параллельным агрегатором, retry и CDN-фолбэком
 - **TG-bypass**: если `t.me` недоступен — каналы читаются через Jina reader, RSSHub, allorigins, telesco.pe
@@ -25,7 +28,7 @@ Android-приложение для поиска и проверки **MTProto-�
 - **Канал @KupuProxy** в UI + безопасные пользовательские HTTPS-источники с защитой от SSRF
 - **Room** + **WorkManager**, remote `sources_manifest.json`, MediaStore-экспорт в Downloads
 - Проверяемое обновление APK: доверенный GitHub Release, SHA-256, package/version и сертификат подписи
-- GitHub Actions: unit tests, lint и debug APK для каждого PR
+- GitHub Actions: unit tests, lint и debug APK для каждого PR; отдельный workflow зеркалирует публичные фиды каждые 4 часа и коммитит только реальные изменения
 
 
 ## Архитектура (app)
@@ -39,8 +42,12 @@ ui/         Material 3 Compose theme, reusable proxy/channel components, Setting
 
 ## Источники
 
-- SoliSpirit/mtproto, Yagami200, kort0881 (RU/EU/All)
-- Surfboardv2ray TGProto, ALIILAPRO, Argh94 scraper, Grim1313
+- SoliSpirit/mtproto, Yagami200
+- [kort0881/telegram-proxy-collector](https://github.com/kort0881/telegram-proxy-collector): публичные generated feeds Verified + RU/EU/US/Asia. Это сторонние данные; KupuProxy не копирует код коллектора и независимо перепроверяет каждую прокси
+- [shablin/mtproto-proxy](https://github.com/shablin/mtproto-proxy): MIT, latency-sorted TXT/JSON; ALIILAPRO, hookzof и dubblebyte используются как дополнительные публичные фиды
+- Surfboardv2ray TGProto, Argh94 scraper, Grim1313
+
+Workflow `.github/workflows/mirror-proxy-feeds.yml` каждые 4 часа сохраняет снимки в `proxy-feeds/`, проверяет JSON и размер ответов, строит дедуплицированный `mtproto_merged.txt` и делает commit только при изменении содержимого. SOCKS5-файлы зеркалируются как данные, но Android-приложение их не проверяет и не выдаёт за MTProto.
 - Telegram-каналы через **зеркала** (не только прямой `t.me/s/...`)
 - Remote manifest + пользовательские URL (Room `sources`)
 

@@ -1,0 +1,32 @@
+{
+  "downloaded": [
+    "aliilapro_mtproto.txt",
+    "dubblebyte_all.txt",
+    "dubblebyte_proxies.json",
+    "hookzof_socks5.txt",
+    "kort_all.txt",
+    "kort_eu.txt",
+    "kort_ru.txt",
+    "kort_socks5.txt",
+    "kort_stats.json",
+    "kort_verified.json",
+    "shablin_valid.json",
+    "shablin_valid.txt"
+  ],
+  "failed": [],
+  "mtproto_merged_count": 465,
+  "sources": {
+    "aliilapro_mtproto.txt": "https://raw.githubusercontent.com/ALIILAPRO/MTProtoProxy/main/mtproto.txt",
+    "dubblebyte_all.txt": "https://raw.githubusercontent.com/dubblebyte/free-mtproto-proxies/main/all_proxies.txt",
+    "dubblebyte_proxies.json": "https://raw.githubusercontent.com/dubblebyte/free-mtproto-proxies/main/proxies.json",
+    "hookzof_socks5.txt": "https://raw.githubusercontent.com/hookzof/socks5_list/master/proxy.txt",
+    "kort_all.txt": "https://raw.githubusercontent.com/kort0881/telegram-proxy-collector/main/proxy_all.txt",
+    "kort_eu.txt": "https://raw.githubusercontent.com/kort0881/telegram-proxy-collector/main/proxy_eu.txt",
+    "kort_ru.txt": "https://raw.githubusercontent.com/kort0881/telegram-proxy-collector/main/proxy_ru.txt",
+    "kort_socks5.txt": "https://raw.githubusercontent.com/kort0881/telegram-proxy-collector/main/socks5.txt",
+    "kort_stats.json": "https://raw.githubusercontent.com/kort0881/telegram-proxy-collector/main/verified/proxy_stats_verified.json",
+    "kort_verified.json": "https://raw.githubusercontent.com/kort0881/telegram-proxy-collector/main/verified/proxy_all_verified.json",
+    "shablin_valid.json": "https://raw.githubusercontent.com/shablin/mtproto-proxy/main/data/valid_proxy.json",
+    "shablin_valid.txt": "https://raw.githubusercontent.com/shablin/mtproto-proxy/main/data/valid_proxy.txt"
+  }
+}

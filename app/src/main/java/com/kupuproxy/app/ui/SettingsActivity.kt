@@ -20,9 +20,14 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -30,11 +35,14 @@ import com.kupuproxy.app.R
 import com.kupuproxy.app.core.util.TelegramIntents
 import com.kupuproxy.app.ui.components.channel.ChannelSettingsListItem
 import com.kupuproxy.app.ui.theme.KupuProxyTheme
+import com.kupuproxy.app.work.ProxyRefreshPreferences
 
 class SettingsActivity : ComponentActivity() {
+    private var refreshSettings by mutableStateOf(ProxyRefreshPreferences.Settings())
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        refreshSettings = ProxyRefreshPreferences.load(this)
         setContent {
             KupuProxyTheme {
                 Scaffold(
@@ -88,6 +96,48 @@ class SettingsActivity : ComponentActivity() {
                                 }
                         )
                         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                        ListItem(
+                            headlineContent = { Text("Автообновление прокси") },
+                            supportingContent = { Text("Verified collector и основные GitHub-источники") },
+                            trailingContent = {
+                                Switch(
+                                    checked = refreshSettings.enabled,
+                                    onCheckedChange = { saveRefresh(refreshSettings.copy(enabled = it)) }
+                                )
+                            }
+                        )
+                        Text("Интервал", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 16.dp))
+                        androidx.compose.foundation.layout.Row(
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
+                        ) {
+                            listOf(3L, 6L, 12L, 24L).forEach { hours ->
+                                AssistChip(
+                                    onClick = { saveRefresh(refreshSettings.copy(hours = hours)) },
+                                    label = { Text(if (refreshSettings.hours == hours) "✓ ${hours}ч" else "${hours}ч") }
+                                )
+                            }
+                        }
+                        ListItem(
+                            headlineContent = { Text("Только безлимитная сеть") },
+                            supportingContent = { Text("Обычно Wi-Fi; Android определяет сеть как unmetered") },
+                            trailingContent = {
+                                Switch(
+                                    checked = refreshSettings.wifiOnly,
+                                    onCheckedChange = { saveRefresh(refreshSettings.copy(wifiOnly = it)) }
+                                )
+                            }
+                        )
+                        ListItem(
+                            headlineContent = { Text("Источник Kort Verified") },
+                            supportingContent = {
+                                Text("Публичные generated feeds kort0881/telegram-proxy-collector. KupuProxy независимо проверяет MTProto handshake.")
+                            },
+                            modifier = Modifier.clickable {
+                                startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/kort0881/telegram-proxy-collector")))
+                            }
+                        )
+                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                         Text(
                             text = stringResource(R.string.settings_hint),
                             style = MaterialTheme.typography.bodyMedium,
@@ -104,5 +154,10 @@ class SettingsActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    private fun saveRefresh(settings: ProxyRefreshPreferences.Settings) {
+        refreshSettings = settings
+        ProxyRefreshPreferences.save(this, settings)
     }
 }

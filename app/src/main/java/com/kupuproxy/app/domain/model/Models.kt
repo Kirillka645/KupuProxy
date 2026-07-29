@@ -25,7 +25,12 @@ data class RawProxyEntry(
     val secretType: SecretType = SecretType.UNKNOWN,
     val sniDomain: String? = null,
     val sourceId: String = "",
-    val sourceName: String = ""
+    val sourceName: String = "",
+    val region: String? = null,
+    val upstreamPingMs: Int? = null,
+    val verificationMethod: String? = null,
+    val probeResistant: Boolean? = null,
+    val snapshotTimestamp: String? = null
 )
 
 data class ProxyEndpoint(
@@ -38,7 +43,12 @@ data class ProxyEndpoint(
     val sourceIds: Set<String> = emptySet(),
     val reliabilityScore: Int = 1,
     val countryCode: String? = null,
-    val asn: String? = null
+    val asn: String? = null,
+    val region: String? = null,
+    val upstreamPingMs: Int? = null,
+    val verificationMethod: String? = null,
+    val probeResistant: Boolean? = null,
+    val snapshotTimestamp: String? = null
 ) {
     val dedupeKey: String
         get() = "${host.lowercase()}:$port:${secret.lowercase()}"

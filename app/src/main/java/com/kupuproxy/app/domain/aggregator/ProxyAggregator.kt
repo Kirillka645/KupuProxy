@@ -97,8 +97,13 @@ class ProxyAggregator(
             val port: Int,
             val secret: String,
             val type: com.kupuproxy.app.domain.model.SecretType,
-            val sni: String?,
-            val sources: MutableSet<String>
+            var sni: String?,
+            val sources: MutableSet<String>,
+            var region: String?,
+            var upstreamPingMs: Int?,
+            var verificationMethod: String?,
+            var probeResistant: Boolean?,
+            var snapshotTimestamp: String?
         )
 
         val byKey = linkedMapOf<String, Acc>()
@@ -124,11 +129,25 @@ class ProxyAggregator(
                     secret = e.secret,
                     type = e.secretType,
                     sni = e.sniDomain,
-                    sources = mutableSetOf()
+                    sources = mutableSetOf(),
+                    region = e.region,
+                    upstreamPingMs = e.upstreamPingMs,
+                    verificationMethod = e.verificationMethod,
+                    probeResistant = e.probeResistant,
+                    snapshotTimestamp = e.snapshotTimestamp
                 )
             }
             if (e.sourceId.isNotBlank()) acc.sources += e.sourceId
-            if (e.sourceName.isNotBlank()) acc.sources += e.sourceName
+            acc.sni = acc.sni ?: e.sniDomain
+            acc.region = acc.region ?: e.region
+            acc.upstreamPingMs = listOfNotNull(acc.upstreamPingMs, e.upstreamPingMs).minOrNull()
+            acc.verificationMethod = acc.verificationMethod ?: e.verificationMethod
+            acc.probeResistant = when {
+                acc.probeResistant == true || e.probeResistant == true -> true
+                acc.probeResistant == false || e.probeResistant == false -> false
+                else -> null
+            }
+            acc.snapshotTimestamp = acc.snapshotTimestamp ?: e.snapshotTimestamp
         }
 
         return byKey.values.map {
@@ -140,8 +159,18 @@ class ProxyAggregator(
                 secretType = it.type,
                 sniDomain = it.sni,
                 sourceIds = it.sources.toSet(),
-                reliabilityScore = it.sources.size.coerceAtLeast(1)
+                reliabilityScore = it.sources.size.coerceAtLeast(1),
+                region = it.region,
+                upstreamPingMs = it.upstreamPingMs,
+                verificationMethod = it.verificationMethod,
+                probeResistant = it.probeResistant,
+                snapshotTimestamp = it.snapshotTimestamp
             )
-        }.sortedByDescending { it.reliabilityScore }
+        }.sortedWith(
+            compareByDescending<ProxyEndpoint> { it.reliabilityScore }
+                .thenByDescending { it.probeResistant == true }
+                .thenBy { it.upstreamPingMs ?: Int.MAX_VALUE }
+                .thenBy { it.dedupeKey }
+        )
     }
 }
