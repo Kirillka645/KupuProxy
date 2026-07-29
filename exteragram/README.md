@@ -24,7 +24,7 @@
 
 Она по очереди:
 
-1. Скачивает списки прокси (SoliSpirit, Yagami200, …)
+1. Скачивает списки прокси (SoliSpirit, Kort, Argh94 и другие)
 2. Проверяет, кто реально открывается
 3. **Добавляет все рабочие** в список прокси Telegram
 4. **Удаляет мёртвые** из вашего списка
@@ -59,7 +59,6 @@
 ## Источники
 
 - [SoliSpirit/mtproto](https://github.com/SoliSpirit/mtproto)
-- [Yagami200/free-mtproto-proxies](https://github.com/Yagami200/free-mtproto-proxies)
 - kort0881, Argh94 scraper, Surfboard, ALIILAPRO  
 (через CDN-зеркала: jsDelivr / githack)
 

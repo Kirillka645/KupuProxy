@@ -75,15 +75,6 @@ object ProxySourceRegistry {
             )
         ),
         UrlListProxySource(
-            id = "yagami200",
-            displayName = "Yagami200 free",
-            urls = HttpSupport.githubCdnUrls(
-                "Yagami200", "free-mtproto-proxies", "main", "all_proxies.txt"
-            ) + HttpSupport.githubCdnUrls(
-                "Yagami200", "free-mtproto-proxies", "main", "proxies.json"
-            )
-        ),
-        UrlListProxySource(
             id = "dubblebyte",
             displayName = "Dubblebyte free MTProto",
             urls = HttpSupport.githubCdnUrls(

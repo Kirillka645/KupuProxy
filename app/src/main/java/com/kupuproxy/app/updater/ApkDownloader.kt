@@ -164,6 +164,12 @@ class ApkDownloader(
     fun canInstallPackages(): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.O || context.packageManager.canRequestPackageInstalls()
 
+    fun isVerifiedUpdateFile(apkFile: File?): Boolean =
+        apkFile != null &&
+            apkFile.isFile &&
+            apkFile.canonicalFile.parentFile == File(context.cacheDir, "updates").canonicalFile &&
+            apkFile.length() in MIN_APK_BYTES..MAX_APK_BYTES
+
     fun openInstallPermissionSettings(activity: Activity) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             activity.startActivity(
@@ -176,6 +182,7 @@ class ApkDownloader(
     }
 
     fun installApk(activity: Activity, apkFile: File) {
+        require(isVerifiedUpdateFile(apkFile)) { "APK обновления недоступен" }
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", apkFile)
         activity.startActivity(
             Intent(Intent.ACTION_VIEW).apply {
