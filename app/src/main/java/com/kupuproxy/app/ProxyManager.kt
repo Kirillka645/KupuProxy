@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import com.kupuproxy.app.data.remote.HttpSupport
+import com.kupuproxy.app.data.source.KortCollectorSource
 import com.kupuproxy.app.data.source.RemoteManifestLoader
 import com.kupuproxy.app.data.source.UserCustomSourceStore
 import com.kupuproxy.app.domain.aggregator.ProxyAggregator
@@ -60,10 +61,23 @@ object ProxyManager {
             synchronized(hits) { hits[result.displayName] = count }
             if (result is SourceResult.Success) {
                 synchronized(all) { all.addAll(result.entries.map { it.url }) }
+                if (result.sourceId == KortCollectorSource.ID && context != null && result.entries.isNotEmpty()) {
+                    ProxyCache.saveKortSnapshot(context, result.entries)
+                }
             }
             onProgress(index, total, result.displayName, count)
         }
         all.addAll(aggregate.proxies.map { it.url })
+        if (context != null) {
+            val kortEntries = aggregate.sourceResults.filterIsInstance<SourceResult.Success>()
+                .firstOrNull { it.sourceId == KortCollectorSource.ID }
+                ?.entries
+                .orEmpty()
+            if (kortEntries.isNotEmpty()) {
+                val stats = runCatching { KortCollectorSource.fetchStats(client) }.getOrNull()
+                ProxyCache.saveKortStatus(context, stats, kortEntries.size, source = "network")
+            }
+        }
 
         var fromCache = false
         var fromSeed = false
@@ -118,10 +132,10 @@ object ProxyManager {
     }
 
     suspend fun fetchSourceById(sourceId: String, context: Context? = null): List<String> {
-        val source = availableSources(context).find { it.id == sourceId }
-        val list = if (source != null) {
+        val source = ProxySourceRegistry.byId(sourceId) ?: availableSources(context).find { it.id == sourceId }
+        val entries = if (source != null) {
             try {
-                source.fetch(client).map { it.url }
+                source.fetch(client)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
@@ -130,12 +144,26 @@ object ProxyManager {
         } else {
             emptyList()
         }
+        if (entries.isNotEmpty() && context != null &&
+            (sourceId == KortCollectorSource.ID || sourceId == "kort_all")
+        ) {
+            ProxyCache.saveKortSnapshot(context, entries)
+            val stats = runCatching { KortCollectorSource.fetchStats(client) }.getOrNull()
+            ProxyCache.saveKortStatus(context, stats, entries.size, source = "network")
+        }
+        val list = entries.map { it.url }
+        /* Source network errors fall through to collector/cache/seed fallback below. */
         if (list.isNotEmpty()) {
             val unique = deduplicateProxies(list)
             context?.let { ProxyCache.saveRawList(it, unique) }
             return unique
         }
         context?.let {
+            if (sourceId == KortCollectorSource.ID || sourceId.startsWith("kort_")) {
+                val region = sourceId.removePrefix("kort_").takeIf { it in KortCollectorSource.SUPPORTED_REGIONS }
+                ProxyCache.loadKortSnapshot(it, region).map { entry -> entry.url }
+                    .takeIf(List<String>::isNotEmpty)?.let { cached -> return cached }
+            }
             ProxyCache.loadRawList(it).takeIf(List<String>::isNotEmpty)?.let { cached -> return cached }
             ProxyCache.loadSeedFromAssets(it).takeIf(List<String>::isNotEmpty)?.let { seed -> return seed }
         }

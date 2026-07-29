@@ -5,14 +5,18 @@ import android.app.NotificationManager
 import android.content.Context
 import android.os.Build
 import androidx.core.app.NotificationCompat
+import androidx.work.BackoffPolicy
+import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.kupuproxy.app.ProxyCache
 import com.kupuproxy.app.R
 import com.kupuproxy.app.data.remote.HttpSupport
+import com.kupuproxy.app.data.source.KortCollectorSource
 import com.kupuproxy.app.domain.aggregator.ProxyAggregator
 import com.kupuproxy.app.domain.source.ProxySourceRegistry
 import java.util.concurrent.TimeUnit
@@ -26,13 +30,31 @@ class ProxyRescanWorker(
         return try {
             val client = HttpSupport.defaultClient()
             val aggregator = ProxyAggregator(client)
-            val sources = ProxySourceRegistry.builtIn().filter { it.enabledByDefault }.take(8)
+            val sources = ProxySourceRegistry.backgroundRefreshSources()
             val result = aggregator.collect(sources)
-            if (result.proxies.isNotEmpty()) {
-                ProxyCache.saveRawList(
+            val kortResult = result.sourceResults.filterIsInstance<com.kupuproxy.app.domain.model.SourceResult.Success>()
+                .firstOrNull { it.sourceId == KortCollectorSource.ID }
+            val stats = KortCollectorSource.fetchStats(client)
+            if (kortResult != null && kortResult.entries.isNotEmpty()) {
+                ProxyCache.saveKortSnapshot(applicationContext, kortResult.entries)
+                ProxyCache.saveKortStatus(
                     applicationContext,
-                    result.proxies.map { it.url }
+                    stats,
+                    kortResult.entries.size,
+                    source = "network"
                 )
+            } else {
+                val cachedCount = ProxyCache.loadKortSnapshot(applicationContext).size
+                ProxyCache.saveKortStatus(
+                    applicationContext,
+                    stats,
+                    cachedCount,
+                    source = if (cachedCount > 0) "cache" else "none",
+                    error = "Не удалось обновить verified snapshot"
+                )
+            }
+            if (result.proxies.isNotEmpty()) {
+                ProxyCache.saveRawList(applicationContext, result.proxies.map { it.url })
             }
             val fav = ProxyCache.getFavorites(applicationContext)
             // soft notify if favorites empty after rescan (informational)
@@ -70,14 +92,27 @@ class ProxyRescanWorker(
         private const val UNIQUE = "kupu_proxy_rescan"
 
         fun schedule(context: Context, hours: Long) {
-            if (hours <= 0) {
+            val current = ProxyRefreshPreferences.load(context)
+            schedule(context, current.copy(enabled = hours > 0, hours = hours.coerceIn(3, 24)))
+        }
+
+        fun schedule(context: Context, settings: ProxyRefreshPreferences.Settings) {
+            if (!settings.enabled) {
                 WorkManager.getInstance(context).cancelUniqueWork(UNIQUE)
                 return
             }
+            val networkType = if (settings.wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED
+            val constraints = Constraints.Builder().setRequiredNetworkType(networkType).build()
+            val hours = settings.hours.coerceIn(3, 24)
             val req = PeriodicWorkRequestBuilder<ProxyRescanWorker>(
-                hours.coerceIn(1, 24),
-                TimeUnit.HOURS
-            ).build()
+                hours,
+                TimeUnit.HOURS,
+                minOf(60L, hours * 10L),
+                TimeUnit.MINUTES
+            )
+                .setConstraints(constraints)
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+                .build()
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 UNIQUE,
                 ExistingPeriodicWorkPolicy.UPDATE,

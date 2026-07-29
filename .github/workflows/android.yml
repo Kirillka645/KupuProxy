@@ -3,6 +3,8 @@ name: Android CI
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "proxy-feeds/**"
   pull_request:
     branches: [main]
   workflow_dispatch:
