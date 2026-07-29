@@ -14,16 +14,18 @@ Android-приложение для поиска и проверки **MTProto-�
 
 Плагин: `.kupu scan` / `.kupu chat` / `.kupu auto` / `.kupu update` (в чат пишет только `.kupu chat`).
 
-## Возможности (v1.3.3)
+## Возможности (v1.3.3.3)
 
-- **Мега-скан** с параллельным агрегатом (таймаут, retry, CDN-фолбэк)
+- Полностью обновлённый интерфейс **Jetpack Compose + Material 3**
+- **Мега-скан** с единым параллельным агрегатором, retry и CDN-фолбэком
 - **TG-bypass**: если `t.me` недоступен — каналы читаются через Jina reader, RSSHub, allorigins, telesco.pe
-- **Мультиформатный парсер**: tg://, t.me, JSON, host:port:secret, HTML, YAML, markdown, base64
-- **MTProto-проверка** (handshake + req_pq / resPQ)
-- **Профили Wi‑Fi / LTE**, seed offline, кэш, избранное
-- **Канал @KupuProxy** в UI + **свои URL-источники** (без Telegram)
-- **Room** + **WorkManager**, remote `sources_manifest.json`
-- Обновление APK из GitHub Releases
+- Ускоренный ограниченный **мультиформатный парсер**: tg://, t.me, JSON, host:port:secret, HTML, YAML, markdown, base64
+- Настоящая **MTProto-проверка** (handshake + req_pq / resPQ) с ограниченным пулом воркеров
+- **Профили Wi‑Fi / LTE**, ранняя остановка, live-результаты, seed offline, кэш и избранное
+- **Канал @KupuProxy** в UI + безопасные пользовательские HTTPS-источники с защитой от SSRF
+- **Room** + **WorkManager**, remote `sources_manifest.json`, MediaStore-экспорт в Downloads
+- Проверяемое обновление APK: доверенный GitHub Release, SHA-256, package/version и сертификат подписи
+- GitHub Actions: unit tests, lint и debug APK для каждого PR
 
 
 ## Архитектура (app)
@@ -32,7 +34,7 @@ Android-приложение для поиска и проверки **MTProto-�
 core/       Constants, FeatureFlags, TelegramIntents, QrEncoder
 domain/     models, ProxyParser, ProxySource, ProxyAggregator
 data/       sources, Room, DataStore promo prefs, export, remote HTTP
-ui/         Compose theme + channel components, Settings/About
+ui/         Material 3 Compose theme, reusable proxy/channel components, Settings/About/Sources
 ```
 
 ## Источники

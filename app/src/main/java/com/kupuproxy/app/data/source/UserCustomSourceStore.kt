@@ -3,6 +3,7 @@ package com.kupuproxy.app.data.source
 import android.content.Context
 import com.kupuproxy.app.data.local.db.AppDatabase
 import com.kupuproxy.app.data.local.db.SourceEntity
+import com.kupuproxy.app.data.remote.SafeUrlPolicy
 import com.kupuproxy.app.domain.model.SourceKind
 import com.kupuproxy.app.domain.source.ProxySource
 import java.util.UUID
@@ -21,21 +22,21 @@ class UserCustomSourceStore(context: Context) {
                     id = entity.id,
                     displayName = entity.name,
                     urls = listOf(entity.url),
-                    kind = runCatching { SourceKind.valueOf(entity.kind) }
-                        .getOrDefault(SourceKind.USER_CUSTOM),
+                    kind = SourceKind.USER_CUSTOM,
                     enabledByDefault = true
                 )
             }
     }
 
-    suspend fun add(name: String, url: String, kind: SourceKind = SourceKind.USER_CUSTOM) {
+    suspend fun add(name: String, url: String, @Suppress("UNUSED_PARAMETER") kind: SourceKind = SourceKind.USER_CUSTOM) {
+        val safeUrl = SafeUrlPolicy.validateHttpsUrl(url).getOrThrow()
         val id = "user_" + UUID.randomUUID().toString().take(8)
         dao.upsert(
             SourceEntity(
                 id = id,
-                name = name.ifBlank { url.take(40) },
-                url = url.trim(),
-                kind = kind.name,
+                name = name.trim().ifBlank { safeUrl.take(40) }.take(80),
+                url = safeUrl,
+                kind = SourceKind.USER_CUSTOM.name,
                 enabled = true,
                 isUser = true
             )
@@ -72,7 +73,9 @@ class UserCustomSourceStore(context: Context) {
             payload.trim(),
             android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP
         )
+        require(raw.size <= 256 * 1024) { "Список источников слишком большой" }
         val arr = org.json.JSONArray(String(raw, Charsets.UTF_8))
+        require(arr.length() <= 100) { "Слишком много источников" }
         var n = 0
         for (i in 0 until arr.length()) {
             val o = arr.optJSONObject(i) ?: continue

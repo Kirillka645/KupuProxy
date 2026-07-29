@@ -118,4 +118,63 @@ class ProxyParserTest {
         val r = ProxyParser.parseMarkdownTables(md)
         assertTrue(r.isNotEmpty())
     }
+
+    @Test
+    fun parseYamlListEntry() {
+        val yaml = """
+            proxies:
+              - type: mtproto
+                server: 4.4.4.4
+                port: 443
+                secret: 0123456789abcdef0123456789abcdef
+        """.trimIndent()
+
+        val result = ProxyParser.parseYamlMtproto(yaml)
+
+        assertEquals(1, result.size)
+        assertEquals("4.4.4.4", result.single().host)
+    }
+
+    @Test
+    fun decodeUnpaddedBase64Source() {
+        val link = "tg://proxy?server=5.5.5.5&port=443&secret=0123456789abcdef0123456789abcdef"
+        val encoded = java.util.Base64.getEncoder().withoutPadding().encodeToString(link.toByteArray())
+
+        val result = ProxyParser.parse(encoded)
+
+        assertEquals(1, result.size)
+        assertEquals("5.5.5.5", result.single().host)
+    }
+
+    @Test
+    fun parseEncodedQueryAndIpv6Host() {
+        val link = "tg://proxy?server=%5B2001%3A4860%3A4860%3A%3A8888%5D&port=443&secret=0123456789abcdef0123456789abcdef"
+
+        val result = ProxyParser.parse(link)
+
+        assertEquals(1, result.size)
+        assertEquals("2001:4860:4860::8888", result.single().host)
+    }
+
+    @Test
+    fun boundsOversizedInputAndResultCount() {
+        val line = "6.6.6.6:443:0123456789abcdef0123456789abcdef\n"
+        val oversized = line.repeat((ProxyParser.MAX_INPUT_CHARS / line.length) + 10_000)
+
+        val result = ProxyParser.parse(oversized)
+
+        assertEquals(1, result.size)
+        assertTrue(oversized.length > ProxyParser.MAX_INPUT_CHARS)
+    }
+
+    @Test
+    fun rejectsInvalidPortsAndShortSecrets() {
+        val body = """
+            tg://proxy?server=1.2.3.4&port=0&secret=0123456789abcdef0123456789abcdef
+            tg://proxy?server=1.2.3.4&port=70000&secret=0123456789abcdef0123456789abcdef
+            1.2.3.4:443:short
+        """.trimIndent()
+
+        assertTrue(ProxyParser.parse(body).isEmpty())
+    }
 }

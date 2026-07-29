@@ -14,7 +14,11 @@ object RemoteManifestLoader {
 
     suspend fun loadExtraSources(client: OkHttpClient): List<ProxySource> {
         return try {
-            val (body, _) = HttpSupport.downloadText(client, BuildConfig.SOURCES_MANIFEST_URL)
+            val (body, _) = HttpSupport.downloadText(
+                client,
+                BuildConfig.SOURCES_MANIFEST_URL,
+                maxBytes = HttpSupport.MAX_MANIFEST_BYTES
+            )
             if (body.isNullOrBlank()) return emptyList()
             parseManifest(body)
         } catch (_: Exception) {

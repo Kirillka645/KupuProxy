@@ -436,7 +436,8 @@ object MtprotoChecker {
     ) : Transport {
         private val input = socket.getInputStream()
         private val output = socket.getOutputStream()
-        private val readBuffer = ArrayList<Byte>()
+        private var readBuffer = ByteArray(0)
+        private var readOffset = 0
         private var didFirstWrite = false
         private lateinit var clientRandom: ByteArray
 
@@ -484,19 +485,31 @@ object MtprotoChecker {
         }
 
         override fun readExact(n: Int): ByteArray {
-            while (readBuffer.size < n) {
+            require(n >= 0) { "negative read length" }
+            val result = ByteArray(n)
+            var written = 0
+            while (written < n) {
+                if (readOffset >= readBuffer.size) {
+                    readBuffer = readApplicationPayload()
+                    readOffset = 0
+                }
+                val count = min(n - written, readBuffer.size - readOffset)
+                System.arraycopy(readBuffer, readOffset, result, written, count)
+                readOffset += count
+                written += count
+            }
+            return result
+        }
+
+        private fun readApplicationPayload(): ByteArray {
+            while (true) {
                 val header = readExactStream(input, 5)
                 val (type, len) = parseTlsHeader(header)
                 val payload = readExactStream(input, len)
                 if (type == 0x14 && payload.contentEquals(byteArrayOf(0x01))) continue
                 require(type == 0x17) { "expected app data 0x${type.toString(16)}" }
-                payload.forEach { readBuffer.add(it) }
+                if (payload.isNotEmpty()) return payload
             }
-            val result = ByteArray(n)
-            for (i in 0 until n) {
-                result[i] = readBuffer.removeAt(0)
-            }
-            return result
         }
     }
 

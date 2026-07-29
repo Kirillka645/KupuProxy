@@ -13,9 +13,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.OpenInNew
-import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -63,7 +63,7 @@ fun ChannelPromoCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
-                    imageVector = Icons.Default.Send,
+                    imageVector = Icons.AutoMirrored.Filled.Send,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(22.dp)
@@ -141,7 +141,7 @@ fun ChannelSettingsListItem(
         headlineContent = { Text(stringResource(R.string.channel_settings_title)) },
         supportingContent = { Text(stringResource(R.string.channel_settings_sub)) },
         trailingContent = {
-            Icon(Icons.Default.OpenInNew, contentDescription = null)
+            Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null)
         },
         modifier = cardModifier.fillMaxWidth().clickable(onClick = onClick)
     )
@@ -189,7 +189,7 @@ fun ChannelInviteDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        icon = { Icon(Icons.Default.Send, contentDescription = null) },
+        icon = { Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null) },
         title = { Text(stringResource(R.string.channel_invite_title)) },
         text = { Text(stringResource(R.string.channel_invite_body)) },
         confirmButton = {

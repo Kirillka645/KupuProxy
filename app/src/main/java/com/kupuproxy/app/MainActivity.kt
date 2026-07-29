@@ -3,24 +3,74 @@ package com.kupuproxy.app
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
+import androidx.compose.material.icons.automirrored.filled.MergeType
+import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.FileOpen
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Smartphone
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.ComposeView
-import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
-import com.google.android.material.button.MaterialButton
-import com.google.android.material.button.MaterialButtonToggleGroup
-import com.google.android.material.card.MaterialCardView
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import com.google.android.material.progressindicator.LinearProgressIndicator
 import com.kupuproxy.app.core.util.TelegramIntents
 import com.kupuproxy.app.data.local.prefs.PromoPreferences
 import com.kupuproxy.app.ui.AboutActivity
@@ -38,77 +88,435 @@ import okhttp3.OkHttpClient
 
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var btnHelp: MaterialButton
-    private lateinit var btnTheme: MaterialButton
-    private lateinit var btnMegaScan: MaterialButton
-    private lateinit var btnSoli: MaterialCardView
-    private lateinit var btnRussia: MaterialCardView
-    private lateinit var btnEurope: MaterialCardView
-    private lateinit var btnSurf: MaterialCardView
-    private lateinit var btnArgh: MaterialCardView
-    private lateinit var btnYagami: MaterialCardView
-    private lateinit var btnOfflineSeed: MaterialButton
-    private lateinit var btnLastWifi: MaterialButton
-    private lateinit var btnLastMobile: MaterialButton
-    private lateinit var btnFavorites: MaterialButton
-    private lateinit var btnMergeAll: MaterialButton
-    private lateinit var btnCheckFile: MaterialButton
-    private lateinit var btnSupport: MaterialButton
-    private lateinit var tvStatus: TextView
-    private lateinit var tvVersion: TextView
-    private lateinit var tvNetworkNow: TextView
-    private lateinit var tvProfileHint: TextView
-    private lateinit var profileToggle: MaterialButtonToggleGroup
-    private lateinit var channelPromoCompose: ComposeView
-    private lateinit var btnSettings: MaterialButton
-
     private val client = OkHttpClient()
     private lateinit var updateChecker: UpdateChecker
     private lateinit var apkDownloader: ApkDownloader
     private lateinit var promoPreferences: PromoPreferences
-    private var pendingUpdate: GitHubRelease? = null
 
-    private val filePickerLauncher = registerForActivityResult(
-        ActivityResultContracts.OpenDocument()
-    ) { uri -> uri?.let { startCheckFileActivity(it) } }
+    private var selectedProfile by mutableStateOf(NetworkProfileMode.AUTO)
+    private var networkLabel by mutableStateOf("")
+    private var counts by mutableStateOf(HomeCounts())
+    private var statusText by mutableStateOf("Готов к поиску прокси")
+    private var promoDismissed by mutableStateOf<Boolean?>(null)
+    private var themeDialogVisible by mutableStateOf(false)
+    private var helpDialogVisible by mutableStateOf(false)
+    private var updateRelease by mutableStateOf<GitHubRelease?>(null)
+    private var pendingUpdate: GitHubRelease? = null
+    private var downloadProgress by mutableIntStateOf(-1)
+    private var downloadError by mutableStateOf<String?>(null)
+
+    private val filePickerLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let(::startCheckFileActivity)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         applySavedTheme()
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
-
         updateChecker = UpdateChecker(this, client)
         apkDownloader = ApkDownloader(this)
         promoPreferences = PromoPreferences(this)
-        initViews()
-        setupChannelPromo()
-        setupProfileToggle()
-        setupClickListeners()
-        setupVersion()
-        refreshNetworkLabel()
+        selectedProfile = savedProfileMode()
+
+        setContent {
+            KupuProxyTheme {
+                HomeScreen()
+            }
+        }
+
+        lifecycleScope.launch { promoDismissed = promoPreferences.isPromoDismissed() }
         checkForUpdates()
-        // optional background rescan every 6h
         ProxyRescanWorker.schedule(this, 6)
     }
 
     override fun onResume() {
         super.onResume()
-        refreshNetworkLabel()
-        updateOfflineButtons()
-        // После разрешения «установка из неизвестных» — продолжаем обновление
+        refreshHomeState()
         pendingUpdate?.let { release ->
             if (apkDownloader.canInstallPackages()) {
-                val r = release
                 pendingUpdate = null
-                startApkDownloadAndInstall(r)
+                startApkDownloadAndInstall(release)
             }
         }
     }
 
+    @OptIn(ExperimentalMaterial3Api::class)
+    @Composable
+    private fun HomeScreen() {
+        val profileSettings = ProfileSettings.forMode(selectedProfile, this)
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Column {
+                            Text("KupuProxy", fontWeight = FontWeight.Bold)
+                            Text(
+                                "v${BuildConfig.VERSION_NAME} · $networkLabel",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = { helpDialogVisible = true }) {
+                            Icon(Icons.AutoMirrored.Filled.HelpOutline, contentDescription = "Справка")
+                        }
+                        IconButton(onClick = { themeDialogVisible = true }) {
+                            Icon(Icons.Default.DarkMode, contentDescription = "Тема")
+                        }
+                        IconButton(onClick = { startActivity(Intent(this@MainActivity, SettingsActivity::class.java)) }) {
+                            Icon(Icons.Default.Settings, contentDescription = "Настройки")
+                        }
+                    }
+                )
+            }
+        ) { padding ->
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().padding(padding),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                item {
+                    HeroCard(
+                        status = statusText,
+                        profile = profileSettings.label,
+                        onScan = { startScan(MODE_MEGA, "Мега-скан") }
+                    )
+                }
+                item {
+                    ProfileSelector(selectedProfile) { mode ->
+                        selectedProfile = mode
+                        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                            .putInt(KEY_PROFILE, mode.preferenceValue()).apply()
+                        refreshHomeState()
+                    }
+                }
+                if (promoDismissed == false) {
+                    item {
+                        ChannelPromoHost(
+                            dismissed = false,
+                            onDismissForever = {
+                                promoDismissed = true
+                                lifecycleScope.launch { promoPreferences.dismissPromoCard() }
+                            }
+                        )
+                    }
+                }
+                item { SectionTitle("Быстрый старт", "Выберите один источник или запустите полный сбор") }
+                items(homeSources, key = HomeSource::id) { source ->
+                    ActionCard(
+                        icon = source.icon,
+                        title = source.title,
+                        subtitle = source.subtitle,
+                        onClick = { startScan(MODE_SOURCE, source.title, source.id) }
+                    )
+                }
+                item { SectionTitle("Офлайн и сохранённое", "Результаты остаются доступны без сети") }
+                item {
+                    ActionCard(
+                        Icons.Default.Download,
+                        "Seed из APK",
+                        "${counts.seed} встроенных · кэш ${counts.cache}",
+                        onClick = { startScan(MODE_SEED, "Seed (офлайн APK)") }
+                    )
+                }
+                item {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        CompactAction(
+                            Modifier.weight(1f), Icons.Default.Wifi, "Wi-Fi", counts.wifi.toString()
+                        ) { openSavedList(NetworkProfileMode.WIFI, "Последние Wi-Fi") }
+                        CompactAction(
+                            Modifier.weight(1f), Icons.Default.Smartphone, "LTE", counts.mobile.toString()
+                        ) { openSavedList(NetworkProfileMode.MOBILE, "Последние LTE") }
+                        CompactAction(
+                            Modifier.weight(1f), Icons.Default.Star, "Избранное", counts.favorites.toString()
+                        ) { openFavorites() }
+                    }
+                }
+                item { SectionTitle("Инструменты", "Импорт, объединение и экспорт списков") }
+                item {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        ToolButton(Modifier.weight(1f), Icons.AutoMirrored.Filled.MergeType, "Собрать файл") {
+                            startActivity(Intent(this@MainActivity, MergeProxiesActivity::class.java))
+                        }
+                        ToolButton(Modifier.weight(1f), Icons.Default.FileOpen, "Проверить файл") {
+                            filePickerLauncher.launch(arrayOf("text/plain", "text/*", "*/*"))
+                        }
+                    }
+                }
+                item {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OutlinedButton(
+                            onClick = { openUrl("https://github.com/${BuildConfig.GITHUB_REPO}") },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.Public, contentDescription = null)
+                            Spacer(Modifier.size(8.dp))
+                            Text("GitHub")
+                        }
+                        OutlinedButton(
+                            onClick = { startActivity(Intent(this@MainActivity, AboutActivity::class.java)) },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.Info, contentDescription = null)
+                            Spacer(Modifier.size(8.dp))
+                            Text("О приложении")
+                        }
+                    }
+                }
+                item { Spacer(Modifier.height(16.dp)) }
+            }
+        }
+
+        if (themeDialogVisible) ThemeDialog()
+        if (helpDialogVisible) HelpDialog()
+        updateRelease?.let { UpdateDialog(it) }
+        if (downloadProgress >= 0) DownloadDialog()
+        downloadError?.let { error ->
+            AlertDialog(
+                onDismissRequest = { downloadError = null },
+                title = { Text("Не удалось обновить") },
+                text = { Text(error) },
+                confirmButton = { TextButton(onClick = { downloadError = null }) { Text("Закрыть") } }
+            )
+        }
+    }
+
+    @Composable
+    private fun HeroCard(status: String, profile: String, onScan: () -> Unit) {
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+            shape = RoundedCornerShape(24.dp)
+        ) {
+            Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier.size(48.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.Shield, contentDescription = null, modifier = Modifier.size(36.dp))
+                    }
+                    Spacer(Modifier.size(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Рабочие MTProto-прокси", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        Text(status, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f))
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AssistChip(onClick = {}, label = { Text(profile) }, leadingIcon = {
+                        Icon(Icons.Default.Speed, contentDescription = null, modifier = Modifier.size(18.dp))
+                    })
+                    AssistChip(onClick = {}, label = { Text("MTProto handshake") })
+                }
+                Button(onClick = onScan, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+                    Icon(Icons.Default.Search, contentDescription = null)
+                    Spacer(Modifier.size(8.dp))
+                    Text("Запустить мега-скан", fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+    }
+
+    @OptIn(ExperimentalMaterial3Api::class)
+    @Composable
+    private fun ProfileSelector(selected: NetworkProfileMode, onSelected: (NetworkProfileMode) -> Unit) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Профиль сети", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                val profiles = listOf(
+                    NetworkProfileMode.AUTO to "Авто",
+                    NetworkProfileMode.WIFI to "Wi-Fi",
+                    NetworkProfileMode.MOBILE to "LTE"
+                )
+                profiles.forEachIndexed { index, (mode, label) ->
+                    SegmentedButton(
+                        selected = selected == mode,
+                        onClick = { onSelected(mode) },
+                        shape = SegmentedButtonDefaults.itemShape(index, profiles.size),
+                        label = { Text(label) }
+                    )
+                }
+            }
+            val settings = ProfileSettings.forMode(selected, this@MainActivity)
+            Text(
+                "До ${settings.maxToCheck} адресов · ${settings.batchSize} потоков · цель ${settings.stopWhenFound}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+
+    @Composable
+    private fun SectionTitle(title: String, subtitle: String) {
+        Column(Modifier.padding(top = 6.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+
+    @Composable
+    private fun ActionCard(icon: ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
+        Card(onClick = onClick, shape = RoundedCornerShape(18.dp)) {
+            Row(
+                Modifier.fillMaxWidth().padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+                Spacer(Modifier.size(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(title, fontWeight = FontWeight.SemiBold)
+                    Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Text("›", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+
+    @Composable
+    private fun CompactAction(modifier: Modifier, icon: ImageVector, title: String, count: String, onClick: () -> Unit) {
+        Card(onClick = onClick, modifier = modifier, shape = RoundedCornerShape(16.dp)) {
+            Column(Modifier.fillMaxWidth().padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.height(6.dp))
+                Text(title, style = MaterialTheme.typography.labelLarge)
+                Text(count, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+
+    @Composable
+    private fun ToolButton(modifier: Modifier, icon: ImageVector, label: String, onClick: () -> Unit) {
+        FilledTonalButton(onClick = onClick, modifier = modifier.height(52.dp)) {
+            Icon(icon, contentDescription = null)
+            Spacer(Modifier.size(8.dp))
+            Text(label)
+        }
+    }
+
+    @Composable
+    private fun ThemeDialog() {
+        val current = getSharedPreferences(PREFS, MODE_PRIVATE).getInt(KEY_THEME, 0)
+        val themes = listOf("Системная", "Светлая", "Тёмная")
+        AlertDialog(
+            onDismissRequest = { themeDialogVisible = false },
+            title = { Text("Тема оформления") },
+            text = {
+                Column {
+                    themes.forEachIndexed { index, title ->
+                        TextButton(
+                            onClick = {
+                                getSharedPreferences(PREFS, MODE_PRIVATE).edit().putInt(KEY_THEME, index).apply()
+                                AppCompatDelegate.setDefaultNightMode(
+                                    when (index) {
+                                        1 -> AppCompatDelegate.MODE_NIGHT_NO
+                                        2 -> AppCompatDelegate.MODE_NIGHT_YES
+                                        else -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+                                    }
+                                )
+                                themeDialogVisible = false
+                                recreate()
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(if (index == current) "✓ $title" else title, modifier = Modifier.fillMaxWidth())
+                        }
+                    }
+                }
+            },
+            confirmButton = {}
+        )
+    }
+
+    @Composable
+    private fun HelpDialog() {
+        AlertDialog(
+            onDismissRequest = { helpDialogVisible = false },
+            icon = { Icon(Icons.AutoMirrored.Filled.HelpOutline, contentDescription = null) },
+            title = { Text("Как работает KupuProxy") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("• Собирает списки из GitHub, CDN, зеркал и ваших HTTPS-источников.")
+                    Text("• Проверяет настоящий MTProto handshake, а не только открытый TCP-порт.")
+                    Text("• Профили Wi-Fi/LTE управляют параллелизмом, таймаутами и расходом батареи.")
+                    Text("• Рабочие прокси, избранное, seed и кэш доступны офлайн.")
+                    HorizontalDivider()
+                    Text("Результат может отличаться от Telegram из-за DPI и блокировок конкретного клиента.")
+                }
+            },
+            confirmButton = { TextButton(onClick = { helpDialogVisible = false }) { Text("Понятно") } },
+            dismissButton = {
+                TextButton(onClick = {
+                    helpDialogVisible = false
+                    TelegramIntents.openTelegramChannel(this)
+                }) { Text("Канал") }
+            }
+        )
+    }
+
+    @Composable
+    private fun UpdateDialog(release: GitHubRelease) {
+        val hasApk = release.apkUrl.isNotBlank()
+        AlertDialog(
+            onDismissRequest = { updateRelease = null },
+            title = { Text("Обновление ${release.tagName}") },
+            text = { Text(release.changelog.ifBlank { "Доступна новая версия KupuProxy" }.take(1800)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    updateRelease = null
+                    if (hasApk) {
+                        if (!apkDownloader.canInstallPackages()) {
+                            pendingUpdate = release
+                            apkDownloader.openInstallPermissionSettings(this)
+                        } else startApkDownloadAndInstall(release)
+                    } else updateChecker.openReleasePage(release.htmlUrl)
+                }) { Text(if (hasApk) "Скачать и установить" else "Открыть GitHub") }
+            },
+            dismissButton = { TextButton(onClick = { updateRelease = null }) { Text("Позже") } }
+        )
+    }
+
+    @Composable
+    private fun DownloadDialog() {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("Проверенное обновление") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (downloadProgress in 0..99) {
+                        LinearProgressIndicator(
+                            progress = { downloadProgress / 100f },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Text("Скачивание и проверка SHA-256… $downloadProgress%")
+                    } else {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 3.dp)
+                            Spacer(Modifier.size(12.dp))
+                            Text("Открываю установщик…")
+                        }
+                    }
+                }
+            },
+            confirmButton = {}
+        )
+    }
+
+    private fun refreshHomeState() {
+        val settings = ProfileSettings.forMode(selectedProfile, this)
+        networkLabel = "${ProfileSettings.currentLabel(this)} · ${settings.label}"
+        counts = HomeCounts(
+            wifi = ProxyCache.loadWorking(this, NetworkProfileMode.WIFI).size,
+            mobile = ProxyCache.loadWorking(this, NetworkProfileMode.MOBILE).size,
+            favorites = ProxyCache.getFavorites(this).size,
+            seed = ProxyCache.loadSeedFromAssets(this).size,
+            cache = ProxyCache.loadRawList(this).size
+        )
+    }
+
     private fun applySavedTheme() {
-        val themeMode = getSharedPreferences(PREFS, MODE_PRIVATE).getInt(KEY_THEME, 0)
         AppCompatDelegate.setDefaultNightMode(
-            when (themeMode) {
+            when (getSharedPreferences(PREFS, MODE_PRIVATE).getInt(KEY_THEME, 0)) {
                 1 -> AppCompatDelegate.MODE_NIGHT_NO
                 2 -> AppCompatDelegate.MODE_NIGHT_YES
                 else -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
@@ -116,188 +524,28 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    private fun initViews() {
-        btnHelp = findViewById(R.id.btnHelp)
-        btnTheme = findViewById(R.id.btnTheme)
-        btnMegaScan = findViewById(R.id.btnMegaScan)
-        btnSoli = findViewById(R.id.btn_soli_card)
-        btnRussia = findViewById(R.id.btn_russia_card)
-        btnEurope = findViewById(R.id.btn_europe_card)
-        btnSurf = findViewById(R.id.btn_surf_card)
-        btnArgh = findViewById(R.id.btn_argh_card)
-        btnYagami = findViewById(R.id.btn_yagami_card)
-        btnOfflineSeed = findViewById(R.id.btnOfflineSeed)
-        btnLastWifi = findViewById(R.id.btnLastWifi)
-        btnLastMobile = findViewById(R.id.btnLastMobile)
-        btnFavorites = findViewById(R.id.btnFavorites)
-        btnMergeAll = findViewById(R.id.btnMergeAll)
-        btnCheckFile = findViewById(R.id.btnCheckFile)
-        btnSupport = findViewById(R.id.btn_support)
-        tvStatus = findViewById(R.id.statusText)
-        tvVersion = findViewById(R.id.tvVersion)
-        tvNetworkNow = findViewById(R.id.tvNetworkNow)
-        tvProfileHint = findViewById(R.id.tvProfileHint)
-        profileToggle = findViewById(R.id.profileToggle)
-        channelPromoCompose = findViewById(R.id.channelPromoCompose)
-        btnSettings = findViewById(R.id.btnSettings)
+    private fun savedProfileMode(): NetworkProfileMode = when (
+        getSharedPreferences(PREFS, MODE_PRIVATE).getInt(KEY_PROFILE, 0)
+    ) {
+        1 -> NetworkProfileMode.WIFI
+        2 -> NetworkProfileMode.MOBILE
+        else -> NetworkProfileMode.AUTO
     }
 
-    private fun setupChannelPromo() {
-        channelPromoCompose.setViewCompositionStrategy(
-            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
-        )
-        // Пока грузим prefs — не резервируем «пустую» высоту Compose (съезжал UI).
-        channelPromoCompose.visibility = android.view.View.GONE
-        channelPromoCompose.setContent {
-            KupuProxyTheme {
-                var dismissed by remember { mutableStateOf<Boolean?>(null) }
-                val scope = rememberCoroutineScope()
-                androidx.compose.runtime.LaunchedEffect(Unit) {
-                    dismissed = promoPreferences.isPromoDismissed()
-                }
-                androidx.compose.runtime.SideEffect {
-                    channelPromoCompose.visibility =
-                        if (dismissed == false) android.view.View.VISIBLE
-                        else android.view.View.GONE
-                }
-                if (dismissed == false) {
-                    ChannelPromoHost(
-                        dismissed = false,
-                        onDismissForever = {
-                            dismissed = true
-                            channelPromoCompose.visibility = android.view.View.GONE
-                            scope.launch { promoPreferences.dismissPromoCard() }
-                        }
-                    )
-                }
-            }
-        }
-    }
-
-    private fun setupVersion() {
-        tvVersion.text = try {
-            "v${packageManager.getPackageInfo(packageName, 0).versionName}"
-        } catch (_: Exception) {
-            "v1.1.0"
-        }
-    }
-
-    private fun setupProfileToggle() {
-        val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
-        val saved = prefs.getInt(KEY_PROFILE, 0)
-        profileToggle.check(
-            when (saved) {
-                1 -> R.id.chipWifi
-                2 -> R.id.chipMobile
-                else -> R.id.chipAuto
-            }
-        )
-        updateProfileHint()
-
-        profileToggle.addOnButtonCheckedListener { _, checkedId, isChecked ->
-            if (!isChecked) return@addOnButtonCheckedListener
-            val mode = when (checkedId) {
-                R.id.chipWifi -> 1
-                R.id.chipMobile -> 2
-                else -> 0
-            }
-            prefs.edit().putInt(KEY_PROFILE, mode).apply()
-            updateProfileHint()
-            refreshNetworkLabel()
-        }
-    }
-
-    private fun currentProfileMode(): NetworkProfileMode {
-        return when (getSharedPreferences(PREFS, MODE_PRIVATE).getInt(KEY_PROFILE, 0)) {
-            1 -> NetworkProfileMode.WIFI
-            2 -> NetworkProfileMode.MOBILE
-            else -> NetworkProfileMode.AUTO
-        }
-    }
-
-    private fun updateProfileHint() {
-        val settings = ProfileSettings.forMode(currentProfileMode(), this)
-        tvProfileHint.text = when (settings.mode) {
-            NetworkProfileMode.MOBILE ->
-                "LTE: до ${settings.maxToCheck} · ${settings.batchSize} параллельно · стоп на ${settings.stopWhenFound} рабочих"
-            else ->
-                "Wi‑Fi: до ${settings.maxToCheck} · ${settings.batchSize} параллельно · стоп на ${settings.stopWhenFound} рабочих"
-        }
-    }
-
-    private fun refreshNetworkLabel() {
-        tvNetworkNow.text = ProfileSettings.currentLabel(this) +
-            " · профиль: ${ProfileSettings.forMode(currentProfileMode(), this).label}"
-    }
-
-    private fun updateOfflineButtons() {
-        val wifi = ProxyCache.loadWorking(this, NetworkProfileMode.WIFI).size
-        val mobile = ProxyCache.loadWorking(this, NetworkProfileMode.MOBILE).size
-        val fav = ProxyCache.getFavorites(this).size
-        val seed = ProxyCache.loadSeedFromAssets(this).size
-        val cache = ProxyCache.loadRawList(this).size
-
-        btnLastWifi.text = if (wifi > 0) "📶 Последние Wi‑Fi ($wifi)" else "📶 Последние Wi‑Fi (пусто)"
-        btnLastMobile.text = if (mobile > 0) "📱 Последние LTE ($mobile)" else "📱 Последние LTE (пусто)"
-        btnFavorites.text = if (fav > 0) "⭐ Избранное ($fav)" else "⭐ Избранное"
-        btnOfflineSeed.text = "📦 Seed из APK (~$seed) · кэш $cache"
-    }
-
-    private fun setupClickListeners() {
-        btnMegaScan.setOnClickListener {
-            startScan(mode = MODE_MEGA, title = "Мега-скан")
-        }
-
-        btnSoli.setOnClickListener { startScan(MODE_SOURCE, "SoliSpirit Mega", "solispirit") }
-        btnRussia.setOnClickListener { startScan(MODE_SOURCE, "Россия (Kort)", "kort_ru") }
-        btnEurope.setOnClickListener { startScan(MODE_SOURCE, "Европа (Kort)", "kort_eu") }
-        btnSurf.setOnClickListener { startScan(MODE_SOURCE, "SurfboardV2ray", "surfboard") }
-        btnArgh.setOnClickListener { startScan(MODE_SOURCE, "Argh94 Scraper", "argh94_scraper") }
-        btnYagami.setOnClickListener { startScan(MODE_SOURCE, "Yagami200 free", "yagami200") }
-
-        btnOfflineSeed.setOnClickListener {
-            startScan(MODE_SEED, "Seed (офлайн APK)")
-        }
-
-        btnLastWifi.setOnClickListener {
-            openSavedList(NetworkProfileMode.WIFI, "Последние Wi‑Fi")
-        }
-        btnLastMobile.setOnClickListener {
-            openSavedList(NetworkProfileMode.MOBILE, "Последние LTE")
-        }
-        btnFavorites.setOnClickListener { openFavorites() }
-
-        btnMergeAll.setOnClickListener {
-            startActivity(Intent(this, MergeProxiesActivity::class.java))
-        }
-
-        btnCheckFile.setOnClickListener {
-            filePickerLauncher.launch(arrayOf("text/plain", "text/*", "*/*"))
-        }
-
-        btnSupport.setOnClickListener {
-            openUrl("https://github.com/${BuildConfig.GITHUB_REPO}")
-        }
-
-        btnHelp.setOnClickListener { showHelpDialog() }
-        btnTheme.setOnClickListener { showThemeDialog() }
-        btnSettings.setOnClickListener {
-            startActivity(Intent(this, SettingsActivity::class.java))
-        }
-        btnSupport.setOnLongClickListener {
-            startActivity(Intent(this, AboutActivity::class.java))
-            true
-        }
+    private fun NetworkProfileMode.preferenceValue(): Int = when (this) {
+        NetworkProfileMode.WIFI -> 1
+        NetworkProfileMode.MOBILE -> 2
+        NetworkProfileMode.AUTO -> 0
     }
 
     private fun startScan(mode: String, title: String, sourceId: String = "") {
-        tvStatus.text = "Загрузка: $title"
+        statusText = "Запуск: $title"
         startActivity(
             Intent(this, ProxyLoadingActivity::class.java).apply {
                 putExtra(EXTRA_MODE, mode)
                 putExtra(EXTRA_SOURCE_NAME, title)
                 putExtra(EXTRA_SOURCE_ID, sourceId)
-                putExtra(EXTRA_PROFILE, currentProfileMode().name)
+                putExtra(EXTRA_PROFILE, selectedProfile.name)
             }
         )
     }
@@ -305,217 +553,95 @@ class MainActivity : AppCompatActivity() {
     private fun openSavedList(profile: NetworkProfileMode, title: String) {
         val list = ProxyCache.loadWorking(this, profile)
         if (list.isEmpty()) {
-            Toast.makeText(this, "Пока пусто — сначала запустите проверку", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Список пуст — сначала запустите проверку", Toast.LENGTH_SHORT).show()
             return
         }
-        startActivity(
-            Intent(this, ProxyListActivity::class.java).apply {
-                putExtra(EXTRA_PROXIES, ArrayList(list))
-                putExtra(EXTRA_SOURCE_NAME, title)
-            }
-        )
+        startActivity(Intent(this, ProxyListActivity::class.java).apply {
+            putExtra(EXTRA_PROXIES, ArrayList(list))
+            putExtra(EXTRA_SOURCE_NAME, title)
+        })
     }
 
     private fun openFavorites() {
         val urls = ProxyCache.getFavorites(this).toList()
         if (urls.isEmpty()) {
-            Toast.makeText(this, "Избранное пусто — нажмите ⭐ на прокси", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Избранное пусто", Toast.LENGTH_SHORT).show()
             return
         }
-        val list = urls.map { ProxyWithPing(it, 0, "Избранное") }
-        startActivity(
-            Intent(this, ProxyListActivity::class.java).apply {
-                putExtra(EXTRA_PROXIES, ArrayList(list))
-                putExtra(EXTRA_SOURCE_NAME, "Избранное")
-            }
-        )
+        startActivity(Intent(this, ProxyListActivity::class.java).apply {
+            putExtra(EXTRA_PROXIES, ArrayList(urls.map { ProxyWithPing(it, 0, "Избранное") }))
+            putExtra(EXTRA_SOURCE_NAME, "Избранное")
+        })
     }
 
     private fun startCheckFileActivity(uri: Uri) {
-        startActivity(
-            Intent(this, CheckFileActivity::class.java).apply {
-                putExtra(EXTRA_FILE_URI, uri)
-                putExtra(EXTRA_PROFILE, currentProfileMode().name)
-            }
-        )
-    }
-
-    private fun showThemeDialog() {
-        val themes = arrayOf("Системная", "Светлая", "Тёмная")
-        val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
-        val current = prefs.getInt(KEY_THEME, 0)
-
-        MaterialAlertDialogBuilder(this)
-            .setTitle("Тема оформления")
-            .setSingleChoiceItems(themes, current) { dialog, which ->
-                prefs.edit().putInt(KEY_THEME, which).apply()
-                AppCompatDelegate.setDefaultNightMode(
-                    when (which) {
-                        1 -> AppCompatDelegate.MODE_NIGHT_NO
-                        2 -> AppCompatDelegate.MODE_NIGHT_YES
-                        else -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
-                    }
-                )
-                dialog.dismiss()
-                recreate()
-            }
-            .setNegativeButton("Отмена", null)
-            .show()
-    }
-
-    private fun showHelpDialog() {
-        MaterialAlertDialogBuilder(this)
-            .setTitle("Справка KupuProxy")
-            .setMessage(
-                "• Проверка как в Telegram: MTProxy handshake + req_pq → resPQ.\n" +
-                    "  В списке только статус «Доступен» (мёртвые secret/порты отсекаются).\n\n" +
-                    "• Мега-скан: SoliSpirit, Yagami200, Kort, Argh94, Surfboard…\n\n" +
-                    "• Обновления: кнопка «Скачать и установить» без GitHub.\n\n" +
-                    "• Профили Wi‑Fi / LTE — разный batch и таймаут.\n\n" +
-                    "• Seed ~580 в APK + локальный кэш.\n\n" +
-                    "• ⭐ избранное, фильтр пинга, шаринг.\n\n" +
-                    "100% совпадение с Telegram не гарантируется (DPI/блокировки клиента), " +
-                    "но отсев «открытый порт / мёртвый proxy» значительно лучше TCP-пинга."
-            )
-            .setPositiveButton("GitHub") { _, _ ->
-                openUrl("https://github.com/${BuildConfig.GITHUB_REPO}")
-            }
-            .setNeutralButton(R.string.channel_open) { _, _ ->
-                TelegramIntents.openTelegramChannel(this)
-            }
-            .setNegativeButton("О приложении") { _, _ ->
-                startActivity(Intent(this, AboutActivity::class.java))
-            }
-            .show()
+        startActivity(Intent(this, CheckFileActivity::class.java).apply {
+            putExtra(EXTRA_FILE_URI, uri)
+            putExtra(EXTRA_PROFILE, selectedProfile.name)
+        })
     }
 
     private fun checkForUpdates() {
         lifecycleScope.launch {
             try {
-                val version = packageManager.getPackageInfo(packageName, 0).versionName ?: "1.0.0"
-                val release = updateChecker.checkForUpdate(version)
-                release?.let {
-                    withContext(Dispatchers.Main) { showUpdateDialog(it) }
-                }
+                val release = updateChecker.checkForUpdate(BuildConfig.VERSION_NAME)
+                if (release != null) updateRelease = release
             } catch (_: Exception) {
             }
         }
     }
 
-    private fun showUpdateDialog(release: GitHubRelease) {
-        val changelog = release.changelog.ifBlank { "Доступна новая версия KupuProxy" }
-        val hasApk = release.apkUrl.isNotBlank()
-        val msg = buildString {
-            append(changelog.take(1200))
-            if (hasApk) append("\n\nМожно скачать и установить прямо здесь — без GitHub.")
-            else append("\n\nAPK в релизе не найден — откройте страницу на GitHub.")
-        }
-
-        MaterialAlertDialogBuilder(this)
-            .setTitle("Обновление ${release.tagName}")
-            .setMessage(msg)
-            .setPositiveButton(if (hasApk) "Скачать и установить" else "Открыть GitHub") { _, _ ->
-                if (hasApk) {
-                    if (!apkDownloader.canInstallPackages()) {
-                        pendingUpdate = release
-                        Toast.makeText(
-                            this,
-                            "Разрешите установку из этого источника",
-                            Toast.LENGTH_LONG
-                        ).show()
-                        apkDownloader.openInstallPermissionSettings(this)
-                    } else {
-                        startApkDownloadAndInstall(release)
-                    }
-                } else {
-                    updateChecker.openReleasePage(release.htmlUrl)
-                }
-            }
-            .setNeutralButton(R.string.channel_changelog) { _, _ ->
-                TelegramIntents.openTelegramChannel(this)
-            }
-            .setNegativeButton("Позже", null)
-            .show()
-    }
-
     private fun startApkDownloadAndInstall(release: GitHubRelease) {
-        val indicator = LinearProgressIndicator(this).apply {
-            isIndeterminate = false
-            max = 100
-            progress = 0
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
-                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                setMargins(48, 32, 48, 16)
-            }
-            trackCornerRadius = 8
-            trackThickness = 10
-        }
-        val statusTv = TextView(this).apply {
-            text = "Скачивание APK…"
-            setPadding(48, 16, 48, 8)
-            textSize = 14f
-        }
-        val box = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
-            addView(statusTv)
-            addView(indicator)
-        }
-
-        val dialog = MaterialAlertDialogBuilder(this)
-            .setTitle("Обновление ${release.tagName}")
-            .setView(box)
-            .setCancelable(false)
-            .setNegativeButton("Отмена") { d, _ ->
-                d.dismiss()
-            }
-            .create()
-        dialog.show()
-
-        val job = lifecycleScope.launch {
+        downloadProgress = 0
+        lifecycleScope.launch {
             try {
-                val file = apkDownloader.download(release.apkUrl, "KupuProxy-${release.tagName}.apk") { pct ->
-                    indicator.progress = pct
-                    statusTv.text = "Скачивание… $pct%"
+                val file = apkDownloader.download(release, "KupuProxy-${release.tagName}.apk") { pct ->
+                    downloadProgress = pct
                 }
-                statusTv.text = "Установка…"
-                dialog.dismiss()
+                downloadProgress = 100
                 if (!apkDownloader.canInstallPackages()) {
                     pendingUpdate = release
-                    Toast.makeText(
-                        this@MainActivity,
-                        "Нужно разрешение на установку",
-                        Toast.LENGTH_LONG
-                    ).show()
+                    downloadProgress = -1
                     apkDownloader.openInstallPermissionSettings(this@MainActivity)
                     return@launch
                 }
-                Toast.makeText(this@MainActivity, "Открываю установщик…", Toast.LENGTH_SHORT).show()
                 apkDownloader.installApk(this@MainActivity, file)
-            } catch (e: Exception) {
-                dialog.dismiss()
-                MaterialAlertDialogBuilder(this@MainActivity)
-                    .setTitle("Не удалось обновить")
-                    .setMessage(e.message ?: "Ошибка загрузки")
-                    .setPositiveButton("GitHub") { _, _ ->
-                        updateChecker.openReleasePage(release.htmlUrl)
-                    }
-                    .setNegativeButton("Закрыть", null)
-                    .show()
-            }
-        }
-        dialog.setOnDismissListener {
-            // user cancelled — job continues unless we cancel; cancel on dismiss only if still downloading
-            if (job.isActive && indicator.progress < 100) {
-                job.cancel()
+                downloadProgress = -1
+            } catch (error: Exception) {
+                downloadProgress = -1
+                downloadError = error.message ?: "Ошибка загрузки"
             }
         }
     }
 
     private fun openUrl(url: String) {
-        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+            .onFailure { Toast.makeText(this, "Не удалось открыть ссылку", Toast.LENGTH_SHORT).show() }
     }
+
+    private data class HomeCounts(
+        val wifi: Int = 0,
+        val mobile: Int = 0,
+        val favorites: Int = 0,
+        val seed: Int = 0,
+        val cache: Int = 0
+    )
+
+    private data class HomeSource(
+        val id: String,
+        val title: String,
+        val subtitle: String,
+        val icon: ImageVector
+    )
+
+    private val homeSources = listOf(
+        HomeSource("solispirit", "SoliSpirit Mega", "Большой автообновляемый список", Icons.Default.Public),
+        HomeSource("kort_ru", "Россия (Kort)", "Прокси с маскировкой под RU-сервисы", Icons.Default.Shield),
+        HomeSource("kort_eu", "Европа (Kort)", "Европейские точки и CDN-домены", Icons.Default.Public),
+        HomeSource("surfboard", "SurfboardV2ray", "Основной и предварительно проверенный списки", Icons.Default.Speed),
+        HomeSource("argh94_scraper", "Argh94 Scraper", "Агрегация публичных каналов", Icons.Default.Search),
+        HomeSource("yagami200", "Yagami200 free", "TXT и JSON с регулярным обновлением", Icons.Default.Download)
+    )
 
     companion object {
         const val PREFS = "kupu_settings"

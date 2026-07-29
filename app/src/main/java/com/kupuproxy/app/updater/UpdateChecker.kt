@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import com.kupuproxy.app.BuildConfig
 import java.io.IOException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -16,6 +17,13 @@ class UpdateChecker(
     private val context: Context,
     private val client: OkHttpClient
 ) {
+    private companion object {
+        const val MAX_METADATA_BYTES = 512L * 1024
+        val SHA256_REGEX = Regex("^[0-9a-fA-F]{64}$")
+        val VERSION_REGEX = Regex("""^(\d+(?:\.\d+)*)(?:[-_.+]?(.*))?$""")
+        val LEADING_NUMBER_REGEX = Regex("""^\d+""")
+        val ANY_NUMBER_REGEX = Regex("""\d+""")
+    }
 
     suspend fun checkForUpdate(currentVersionName: String): GitHubRelease? =
         withContext(Dispatchers.IO) {
@@ -26,6 +34,8 @@ class UpdateChecker(
                     .maxWithOrNull(compareBy { parseVersion(it.tagName) })
                     ?: return@withContext null
                 if (isNewerVersion(currentVersionName, best.tagName)) best else null
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (_: Exception) {
                 null
             }
@@ -46,15 +56,13 @@ class UpdateChecker(
             .removePrefix("V")
             .trim()
         // "1.3.2-fix" / "1.3.2_fix" / "1.3.2.fix" / "1.3.2fix"
-        val match = Regex(
-            """^(\d+(?:\.\d+)*)(?:[-_.+]?(.*))?$"""
-        ).matchEntire(s)
+        val match = VERSION_REGEX.matchEntire(s)
         val numPart = match?.groupValues?.getOrNull(1) ?: s
         val suffix = (match?.groupValues?.getOrNull(2) ?: "").lowercase().trim()
         val nums = numPart.split('.')
             .map { segment ->
                 // на случай "2fix" без разделителя — берём ведущие цифры
-                Regex("""^\d+""").find(segment)?.value?.toIntOrNull() ?: 0
+                LEADING_NUMBER_REGEX.find(segment)?.value?.toIntOrNull() ?: 0
             }
             .ifEmpty { listOf(0) }
         return VersionParts(nums, suffixWeight(suffix), suffix)
@@ -64,7 +72,7 @@ class UpdateChecker(
     private fun suffixWeight(suffix: String): Int {
         if (suffix.isBlank()) return 0
         return when {
-            suffix.startsWith("fix") -> 10 + (Regex("""\d+""").find(suffix)?.value?.toIntOrNull() ?: 0)
+            suffix.startsWith("fix") -> 10 + (ANY_NUMBER_REGEX.find(suffix)?.value?.toIntOrNull() ?: 0)
             suffix.startsWith("hotfix") -> 11
             suffix.startsWith("patch") -> 9
             suffix.startsWith("rc") -> -2
@@ -131,37 +139,61 @@ class UpdateChecker(
             .header("Accept", "application/vnd.github.v3+json")
             .header("User-Agent", "KupuProxy-Android/${BuildConfig.VERSION_NAME}")
             .build()
-        val response = client.newCall(request).execute()
-        if (!response.isSuccessful) {
-            throw IOException("GitHub API error: ${response.code}")
+        return client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw IOException("GitHub API error: ${response.code}")
+            }
+            val body = response.body ?: throw IOException("Empty response")
+            val declared = body.contentLength()
+            if (declared > MAX_METADATA_BYTES) throw IOException("GitHub response is too large")
+            val bytes = body.source().readByteArray(MAX_METADATA_BYTES + 1)
+            if (bytes.size > MAX_METADATA_BYTES) throw IOException("GitHub response is too large")
+            bytes.toString(Charsets.UTF_8)
         }
-        return response.body?.string() ?: throw IOException("Empty response")
     }
 
     private fun parseReleaseJson(json: JSONObject): GitHubRelease {
         val assets = json.optJSONArray("assets") ?: JSONArray()
         var apkUrl = ""
-        // предпочитаем APK с "KupuProxy" в имени, иначе любой .apk
-        var fallback = ""
+        var apkName = ""
+        var apkSize = -1L
+        var digest: String? = null
+        var digestUrl: String? = null
         for (i in 0 until assets.length()) {
             val asset = assets.getJSONObject(i)
             val name = asset.optString("name", "")
             val url = asset.optString("browser_download_url", "")
-            if (!name.endsWith(".apk", ignoreCase = true) || url.isBlank()) continue
-            if (name.contains("KupuProxy", ignoreCase = true)) {
-                apkUrl = url
-                break
+            if (url.isBlank() || !isExpectedReleaseAssetUrl(url)) continue
+            if (name.endsWith(".apk.sha256", ignoreCase = true)) {
+                digestUrl = url
+                continue
             }
-            if (fallback.isBlank()) fallback = url
+            if (!name.endsWith(".apk", ignoreCase = true) ||
+                !name.startsWith("KupuProxy-", ignoreCase = true) || apkUrl.isNotBlank()
+            ) continue
+            apkUrl = url
+            apkName = name
+            apkSize = asset.optLong("size", -1L)
+            digest = asset.optString("digest", "")
+                .removePrefix("sha256:")
+                .takeIf { it.matches(SHA256_REGEX) }
         }
-        if (apkUrl.isBlank()) apkUrl = fallback
 
         return GitHubRelease(
             tagName = json.getString("tag_name"),
             changelog = json.optString("body", ""),
             apkUrl = apkUrl,
-            htmlUrl = json.getString("html_url")
+            htmlUrl = json.getString("html_url"),
+            apkName = apkName,
+            apkSize = apkSize,
+            sha256 = digest,
+            sha256Url = digestUrl
         )
+    }
+
+    private fun isExpectedReleaseAssetUrl(url: String): Boolean {
+        val expected = "https://github.com/${BuildConfig.GITHUB_REPO}/releases/download/"
+        return url.startsWith(expected, ignoreCase = true)
     }
 
     fun openReleasePage(releaseUrl: String) {

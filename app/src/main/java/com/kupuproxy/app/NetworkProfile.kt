@@ -3,7 +3,6 @@ package com.kupuproxy.app
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
-import android.os.Build
 
 enum class NetworkProfileMode {
     AUTO,
@@ -60,23 +59,15 @@ data class ProfileSettings(
                 ?: return NetworkProfileMode.WIFI
 
             return try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    val network = cm.activeNetwork ?: return NetworkProfileMode.WIFI
-                    val caps = cm.getNetworkCapabilities(network) ?: return NetworkProfileMode.WIFI
-                    when {
-                        caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
-                            caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) ->
-                            NetworkProfileMode.WIFI
-                        caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ->
-                            NetworkProfileMode.MOBILE
-                        else -> NetworkProfileMode.WIFI
-                    }
-                } else {
-                    @Suppress("DEPRECATION")
-                    when (cm.activeNetworkInfo?.type) {
-                        ConnectivityManager.TYPE_MOBILE -> NetworkProfileMode.MOBILE
-                        else -> NetworkProfileMode.WIFI
-                    }
+                val network = cm.activeNetwork ?: return NetworkProfileMode.WIFI
+                val caps = cm.getNetworkCapabilities(network) ?: return NetworkProfileMode.WIFI
+                when {
+                    caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                        caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) ->
+                        NetworkProfileMode.WIFI
+                    caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ->
+                        NetworkProfileMode.MOBILE
+                    else -> NetworkProfileMode.WIFI
                 }
             } catch (_: Exception) {
                 NetworkProfileMode.WIFI

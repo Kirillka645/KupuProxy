@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import com.kupuproxy.app.data.local.db.SourceEntity
 import com.kupuproxy.app.data.source.UserCustomSourceStore
 import com.kupuproxy.app.ui.theme.KupuProxyTheme
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 class UserSourcesActivity : ComponentActivity() {
@@ -139,11 +140,21 @@ class UserSourcesActivity : ComponentActivity() {
                                     return@Button
                                 }
                                 scope.launch {
-                                    store.add(name, url)
-                                    items = store.list()
-                                    showAdd = false
-                                    name = ""
-                                    url = ""
+                                    try {
+                                        store.add(name, url)
+                                        items = store.list()
+                                        showAdd = false
+                                        name = ""
+                                        url = ""
+                                    } catch (cancelled: CancellationException) {
+                                        throw cancelled
+                                    } catch (error: Exception) {
+                                        Toast.makeText(
+                                            this@UserSourcesActivity,
+                                            error.message ?: "Не удалось добавить источник",
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                    }
                                 }
                             }) { Text("Сохранить") }
                         },
