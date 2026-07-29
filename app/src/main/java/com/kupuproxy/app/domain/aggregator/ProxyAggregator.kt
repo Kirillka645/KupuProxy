@@ -74,6 +74,8 @@ class ProxyAggregator(
                 )
             } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
                 lastError = ProxyError.Timeout()
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 lastError = ProxyError.Network(e.message ?: e.javaClass.simpleName)
             }

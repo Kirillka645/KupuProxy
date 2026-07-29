@@ -10,6 +10,8 @@
 .cxx
 local.properties
 *.apk
+*.sha256
+/outputs/
 *.aab
 *.ap_
 *.dex

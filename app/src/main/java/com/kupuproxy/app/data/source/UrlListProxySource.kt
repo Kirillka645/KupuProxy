@@ -16,8 +16,11 @@ class UrlListProxySource(
 ) : ProxySource {
 
     override suspend fun fetch(client: OkHttpClient): List<RawProxyEntry> {
-        val downloaded = HttpSupport.downloadWithRetry(client, urls)
-            ?: return emptyList()
+        val downloaded = HttpSupport.downloadWithRetry(
+            client = client,
+            urls = urls,
+            enforceSafeUrl = kind == SourceKind.USER_CUSTOM
+        ) ?: return emptyList()
         return ProxyParser.parse(downloaded.first, id, displayName)
     }
 }

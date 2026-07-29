@@ -3,175 +3,42 @@ package com.kupuproxy.app
 import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
+import android.content.ContentValues
+import android.os.Build
 import android.os.Environment
+import android.provider.MediaStore
+import com.kupuproxy.app.data.remote.HttpSupport
+import com.kupuproxy.app.data.source.RemoteManifestLoader
+import com.kupuproxy.app.data.source.UserCustomSourceStore
+import com.kupuproxy.app.domain.aggregator.ProxyAggregator
+import com.kupuproxy.app.domain.model.SourceResult
+import com.kupuproxy.app.domain.parser.ProxyParser
+import com.kupuproxy.app.domain.source.ProxySource
+import com.kupuproxy.app.domain.source.ProxySourceRegistry
 import java.io.File
 import java.io.FileOutputStream
+import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
-import okhttp3.Request
 
 object ProxyManager {
 
     private const val MAX_PROXIES = 15_000
 
-    private val client: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(12, TimeUnit.SECONDS)
-        .readTimeout(20, TimeUnit.SECONDS)
-        .followRedirects(true)
-        .build()
-
-    /**
-     * Источники + зеркала (jsDelivr / githack / ghproxy) — если raw.githubusercontent
-     * режется на мобильной сети, подхватываем CDN.
-     */
-    data class Source(
-        val id: String,
-        val name: String,
-        val description: String,
-        val urls: List<String>,
-        val region: String = "ALL" // RU, EU, ALL
-    )
-
-    val SOURCES: List<Source> = listOf(
-        Source(
-            id = "solispirit",
-            name = "SoliSpirit Mega",
-            description = "~250+ авто-обновляемых MTProto",
-            urls = listOf(
-                "https://fastly.jsdelivr.net/gh/SoliSpirit/mtproto@master/all_proxies.txt",
-                "https://gcore.jsdelivr.net/gh/SoliSpirit/mtproto@master/all_proxies.txt",
-                "https://raw.githack.com/SoliSpirit/mtproto/master/all_proxies.txt",
-                "https://rawcdn.githack.com/SoliSpirit/mtproto/master/all_proxies.txt",
-                "https://ghproxy.net/https://raw.githubusercontent.com/SoliSpirit/mtproto/master/all_proxies.txt",
-                "https://raw.githubusercontent.com/SoliSpirit/mtproto/master/all_proxies.txt"
-            )
-        ),
-        Source(
-            id = "kort_all",
-            name = "Kort All",
-            description = "RU + EU комбайн",
-            urls = listOf(
-                "https://cdn.jsdelivr.net/gh/kort0881/telegram-proxy-collector@main/proxy_all.txt",
-                "https://fastly.jsdelivr.net/gh/kort0881/telegram-proxy-collector@main/proxy_all.txt",
-                "https://raw.githack.com/kort0881/telegram-proxy-collector/main/proxy_all.txt",
-                "https://ghproxy.net/https://raw.githubusercontent.com/kort0881/telegram-proxy-collector/main/proxy_all.txt",
-                "https://raw.githubusercontent.com/kort0881/telegram-proxy-collector/main/proxy_all.txt"
-            )
-        ),
-        Source(
-            id = "kort_ru",
-            name = "Россия (Kort)",
-            description = "Маскировка под RU-сервисы",
-            region = "RU",
-            urls = listOf(
-                "https://cdn.jsdelivr.net/gh/kort0881/telegram-proxy-collector@main/proxy_ru.txt",
-                "https://fastly.jsdelivr.net/gh/kort0881/telegram-proxy-collector@main/proxy_ru.txt",
-                "https://raw.githack.com/kort0881/telegram-proxy-collector/main/proxy_ru.txt",
-                "https://raw.githubusercontent.com/kort0881/telegram-proxy-collector/main/proxy_ru.txt"
-            )
-        ),
-        Source(
-            id = "kort_eu",
-            name = "Европа (Kort)",
-            description = "Маскировка под Google/CF",
-            region = "EU",
-            urls = listOf(
-                "https://cdn.jsdelivr.net/gh/kort0881/telegram-proxy-collector@main/proxy_eu.txt",
-                "https://fastly.jsdelivr.net/gh/kort0881/telegram-proxy-collector@main/proxy_eu.txt",
-                "https://raw.githack.com/kort0881/telegram-proxy-collector/main/proxy_eu.txt",
-                "https://raw.githubusercontent.com/kort0881/telegram-proxy-collector/main/proxy_eu.txt"
-            )
-        ),
-        Source(
-            id = "surfboard",
-            name = "SurfboardV2ray",
-            description = "Большой список + tested",
-            urls = listOf(
-                "https://cdn.jsdelivr.net/gh/Surfboardv2ray/TGProto@main/proxies.txt",
-                "https://cdn.jsdelivr.net/gh/Surfboardv2ray/TGProto@main/proxies-tested.txt",
-                "https://fastly.jsdelivr.net/gh/Surfboardv2ray/TGProto@main/proxies.txt",
-                "https://raw.githack.com/Surfboardv2ray/TGProto/main/proxies.txt",
-                "https://raw.githubusercontent.com/Surfboardv2ray/TGProto/main/proxies-tested.txt"
-            )
-        ),
-        Source(
-            id = "aliilapro",
-            name = "ALIILAPRO",
-            description = "Ежедневный список",
-            urls = listOf(
-                "https://cdn.jsdelivr.net/gh/ALIILAPRO/MTProtoProxy@main/mtproto.txt",
-                "https://fastly.jsdelivr.net/gh/ALIILAPRO/MTProtoProxy@main/mtproto.txt",
-                "https://raw.githack.com/ALIILAPRO/MTProtoProxy/main/mtproto.txt",
-                "https://raw.githubusercontent.com/ALIILAPRO/MTProtoProxy/main/mtproto.txt"
-            )
-        ),
-        Source(
-            id = "argh94_scraper",
-            name = "Argh94 Scraper",
-            description = "Парсер каналов · 300+",
-            urls = listOf(
-                "https://raw.githubusercontent.com/Argh94/telegram-proxy-scraper/main/proxy.txt",
-                "https://cdn.jsdelivr.net/gh/Argh94/telegram-proxy-scraper@main/proxy.txt",
-                "https://raw.githack.com/Argh94/telegram-proxy-scraper/main/proxy.txt",
-                "https://ghproxy.net/https://raw.githubusercontent.com/Argh94/telegram-proxy-scraper/main/proxy.txt"
-            )
-        ),
-        Source(
-            id = "grim1313",
-            name = "Grim1313 list",
-            description = "Sync SoliSpirit / fork",
-            urls = listOf(
-                "https://raw.githack.com/Grim1313/mtproto-for-telegram/master/all_proxies.txt",
-                "https://cdn.jsdelivr.net/gh/Grim1313/mtproto-for-telegram@master/all_proxies.txt",
-                "https://raw.githubusercontent.com/Grim1313/mtproto-for-telegram/master/all_proxies.txt"
-            )
-        ),
-        Source(
-            id = "yagami200",
-            name = "Yagami200 free",
-            description = "Auto-test every 8h · JSON+TXT",
-            urls = listOf(
-                "https://raw.githubusercontent.com/Yagami200/free-mtproto-proxies/main/all_proxies.txt",
-                "https://raw.githubusercontent.com/Yagami200/free-mtproto-proxies/main/proxies.json",
-                "https://cdn.jsdelivr.net/gh/Yagami200/free-mtproto-proxies@main/all_proxies.txt",
-                "https://cdn.jsdelivr.net/gh/Yagami200/free-mtproto-proxies@main/proxies.json",
-                "https://raw.githack.com/Yagami200/free-mtproto-proxies/main/all_proxies.txt",
-                "https://raw.githack.com/Yagami200/free-mtproto-proxies/main/proxies.json",
-                "https://ghproxy.net/https://raw.githubusercontent.com/Yagami200/free-mtproto-proxies/main/proxies.json"
-            )
-        )
-    )
-
-    private val LINK_REGEX = Regex(
-        """(?:tg://(?:proxy|socks)|https?://t\.me/(?:proxy|socks))\?[^\s<>"'`)\]#,]+""",
-        RegexOption.IGNORE_CASE
-    )
-
-    suspend fun fetchSource(source: Source): Pair<List<String>, String?> =
-        withContext(Dispatchers.IO) {
-            for (url in source.urls) {
-                try {
-                    val body = downloadText(url) ?: continue
-                    val parsed = parseProxyLinks(body)
-                    if (parsed.isNotEmpty()) {
-                        return@withContext parsed to url
-                    }
-                } catch (_: Exception) {
-                }
-            }
-            emptyList<String>() to null
-        }
+    private val client: OkHttpClient = HttpSupport.defaultClient()
 
     suspend fun fetchAllSources(
         context: Context? = null,
@@ -181,54 +48,22 @@ object ProxyManager {
         val hits = linkedMapOf<String, Int>()
         val mirrors = mutableListOf<String>()
 
-        // Новый агрегатор (parallel + retry + multi-format parse)
-        try {
-            val remoteExtra = try {
-                com.kupuproxy.app.data.source.RemoteManifestLoader.loadExtraSources(client)
-            } catch (_: Exception) {
-                emptyList()
+        val registry = availableSources(context)
+        val done = AtomicInteger(0)
+        val total = registry.size
+        val aggregate = ProxyAggregator(client).collect(registry) { result ->
+            val count = when (result) {
+                is SourceResult.Success -> result.entries.size
+                is SourceResult.Failure -> 0
             }
-            val userExtra = try {
-                if (context != null) {
-                    com.kupuproxy.app.data.source.UserCustomSourceStore(context)
-                        .allEnabledSources()
-                } else emptyList()
-            } catch (_: Exception) {
-                emptyList()
+            val index = done.incrementAndGet()
+            synchronized(hits) { hits[result.displayName] = count }
+            if (result is SourceResult.Success) {
+                synchronized(all) { all.addAll(result.entries.map { it.url }) }
             }
-            val registry = (
-                com.kupuproxy.app.domain.source.ProxySourceRegistry
-                    .builtIn()
-                    .filter { it.enabledByDefault } + remoteExtra + userExtra
-                ).distinctBy { it.id }
-            val aggregator = com.kupuproxy.app.domain.aggregator.ProxyAggregator(client)
-            var done = 0
-            val total = registry.size
-            val aggregate = aggregator.collect(registry) { result ->
-                done++
-                val count = when (result) {
-                    is com.kupuproxy.app.domain.model.SourceResult.Success -> result.entries.size
-                    is com.kupuproxy.app.domain.model.SourceResult.Failure -> 0
-                }
-                hits[result.displayName] = count
-                if (result is com.kupuproxy.app.domain.model.SourceResult.Success) {
-                    result.mirrorUsed?.let { mirrors.add("${result.displayName} ← $it") }
-                    all.addAll(result.entries.map { it.url })
-                }
-                onProgress(done, total, result.displayName, count)
-            }
-            // ensure all urls from endpoints
-            all.addAll(aggregate.proxies.map { it.url })
-        } catch (_: Exception) {
-            // fallback legacy sequential
-            SOURCES.forEachIndexed { index, source ->
-                val (list, mirror) = fetchSource(source)
-                hits[source.name] = list.size
-                all.addAll(list)
-                if (mirror != null) mirrors.add("${source.name} ← $mirror")
-                onProgress(index + 1, SOURCES.size, source.name, list.size)
-            }
+            onProgress(index, total, result.displayName, count)
         }
+        all.addAll(aggregate.proxies.map { it.url })
 
         var fromCache = false
         var fromSeed = false
@@ -263,72 +98,56 @@ object ProxyManager {
         )
     }
 
-    suspend fun fetchSourceById(sourceId: String, context: Context? = null): List<String> {
-        val source = SOURCES.find { it.id == sourceId } ?: return emptyList()
-        val (list, _) = fetchSource(source)
-        if (list.isNotEmpty()) {
-            context?.let { ProxyCache.saveRawList(it, list) }
-            return deduplicateProxies(list)
+    private suspend fun availableSources(context: Context?): List<ProxySource> {
+        val builtIn = ProxySourceRegistry.builtIn().filter { it.enabledByDefault }
+        val remote = try {
+            RemoteManifestLoader.loadExtraSources(client)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            emptyList()
         }
-        // fallback cascade
+        val custom = try {
+            context?.let { UserCustomSourceStore(it).allEnabledSources() }.orEmpty()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            emptyList()
+        }
+        return (builtIn + remote + custom).distinctBy { it.id }
+    }
+
+    suspend fun fetchSourceById(sourceId: String, context: Context? = null): List<String> {
+        val source = availableSources(context).find { it.id == sourceId }
+        val list = if (source != null) {
+            try {
+                source.fetch(client).map { it.url }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                emptyList()
+            }
+        } else {
+            emptyList()
+        }
+        if (list.isNotEmpty()) {
+            val unique = deduplicateProxies(list)
+            context?.let { ProxyCache.saveRawList(it, unique) }
+            return unique
+        }
         context?.let {
-            val cache = ProxyCache.loadRawList(it)
-            if (cache.isNotEmpty()) return cache
-            val seed = ProxyCache.loadSeedFromAssets(it)
-            if (seed.isNotEmpty()) return seed
+            ProxyCache.loadRawList(it).takeIf(List<String>::isNotEmpty)?.let { cached -> return cached }
+            ProxyCache.loadSeedFromAssets(it).takeIf(List<String>::isNotEmpty)?.let { seed -> return seed }
         }
         return emptyList()
     }
 
-    private fun downloadText(url: String): String? {
-        val request = Request.Builder()
-            .url(url)
-            .header("User-Agent", "KupuProxy/1.1 Android")
-            .header("Accept", "text/plain,*/*")
-            .build()
-        client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) return null
-            return response.body?.string()
-        }
-    }
-
-    fun parseProxyLinks(body: String): List<String> {
-        // Multi-format parser (links, JSON, host:port:secret, HTML, YAML, tables, base64)
-        val parsed = com.kupuproxy.app.domain.parser.ProxyParser.parse(body)
-            .map { it.url }
-            .filter { it.startsWith("tg://proxy?") || it.startsWith("tg://socks?") }
-        if (parsed.isNotEmpty()) return parsed.distinct().take(MAX_PROXIES)
-
-        val result = LinkedHashSet<String>()
-        LINK_REGEX.findAll(body).forEach { match ->
-            val raw = match.value.trim().trimEnd(')', ']', ',', ';', '"', '\'')
-            val normalized = convertToTgFormat(raw)
-            if (normalized.startsWith("tg://proxy?") || normalized.startsWith("tg://socks?")) {
-                result.add(normalized)
-            }
-        }
-        body.lineSequence().forEach { line ->
-            val t = line.trim()
-            if (t.startsWith("tg://proxy?") || t.startsWith("tg://socks?")) {
-                result.add(t)
-            }
-        }
-        return result.toList().take(MAX_PROXIES)
-    }
-
-    private fun convertToTgFormat(url: String): String {
-        return when {
-            url.startsWith("https://t.me/proxy?", ignoreCase = true) ->
-                "tg://proxy?" + url.substringAfter("?")
-            url.startsWith("http://t.me/proxy?", ignoreCase = true) ->
-                "tg://proxy?" + url.substringAfter("?")
-            url.startsWith("https://t.me/socks?", ignoreCase = true) ->
-                "tg://socks?" + url.substringAfter("?")
-            url.startsWith("http://t.me/socks?", ignoreCase = true) ->
-                "tg://socks?" + url.substringAfter("?")
-            else -> url
-        }
-    }
+    fun parseProxyLinks(body: String): List<String> = ProxyParser.parse(body)
+        .asSequence()
+        .map { it.url }
+        .distinct()
+        .take(MAX_PROXIES)
+        .toList()
 
     fun deduplicateProxies(proxies: List<String>): List<String> =
         proxies.distinctBy { normalizeProxyKey(it) }
@@ -348,16 +167,22 @@ object ProxyManager {
             var secret = ""
 
             paramsPart.split("&").forEach { param ->
-                when {
-                    param.startsWith("server=") -> server = param.substringAfter("=")
-                    param.startsWith("port=") -> port = param.substringAfter("=")
-                    param.startsWith("secret=") -> {
-                        val clean = param.substringAfter("=").split("&", "#", "@").first()
-                        if (clean.isNotEmpty()) secret = clean
-                    }
+                val separator = param.indexOf('=')
+                if (separator <= 0) return@forEach
+                val key = param.substring(0, separator).lowercase(Locale.US)
+                val raw = param.substring(separator + 1).substringBefore('#').substringBefore('@')
+                val value = runCatching {
+                    URLDecoder.decode(raw, StandardCharsets.UTF_8.name())
+                }.getOrDefault(raw)
+                when (key) {
+                    "server", "host", "ip" -> if (server.isEmpty()) server = value
+                    "port" -> if (port.isEmpty()) port = value
+                    "secret", "password" -> if (secret.isEmpty()) secret = value
                 }
             }
 
+            server = server.trim().trim('[', ']').lowercase(Locale.US)
+            secret = secret.trim().lowercase(Locale.US)
             when {
                 server.isNotEmpty() && port.isNotEmpty() && secret.isNotEmpty() ->
                     "$server:$port:$secret"
@@ -394,81 +219,64 @@ object ProxyManager {
         onProgress: (processed: Int, total: Int, working: Int) -> Unit,
         onFound: (ProxyWithPing) -> Unit = {}
     ): List<ProxyWithPing> = withContext(Dispatchers.IO) {
-        val results = mutableListOf<ProxyWithPing>()
-        val mutex = Mutex()
-        val total = proxies.size
-        var processed = 0
-        var working = 0
-        var stop = false
+        if (proxies.isEmpty()) return@withContext emptyList()
 
-        val concurrency = settings.batchSize.coerceIn(16, 64)
+        val total = proxies.size
+        val concurrency = settings.batchSize.coerceIn(16, 64).coerceAtMost(total)
         val connectMs = settings.connectTimeoutMs.coerceIn(800, 2500)
         val responseMs = (settings.connectTimeoutMs + 800).coerceIn(1200, 3500)
         val stopAt = settings.stopWhenFound
-        val semaphore = Semaphore(concurrency)
+        val cursor = AtomicInteger(0)
+        val processed = AtomicInteger(0)
+        val working = AtomicInteger(0)
+        val stopped = AtomicBoolean(false)
+        val results = java.util.Collections.synchronizedList(mutableListOf<ProxyWithPing>())
 
-        val jobs = proxies.map { proxyUrl ->
-            async {
-                if (stop) {
-                    mutex.withLock { processed++ }
-                    return@async
-                }
-                if (proxyUrl.contains("socks?", ignoreCase = true)) {
-                    mutex.withLock {
-                        processed++
-                        val p = processed
-                        val w = working
-                        withContext(Dispatchers.Main) { onProgress(p, total, w) }
-                    }
-                    return@async
-                }
+        coroutineScope {
+            List(concurrency) {
+                async {
+                    while (currentCoroutineContext().isActive && !stopped.get()) {
+                        val index = cursor.getAndIncrement()
+                        if (index >= total) break
+                        val proxyUrl = proxies[index]
 
-                semaphore.withPermit {
-                    if (stop) {
-                        mutex.withLock { processed++ }
-                        return@withPermit
-                    }
+                        val item = if (proxyUrl.contains("socks?", ignoreCase = true)) {
+                            null
+                        } else {
+                            val result = try {
+                                MtprotoChecker.checkUrl(proxyUrl, connectMs, responseMs)
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (_: Exception) {
+                                MtprotoChecker.CheckResult(false, -1, "error")
+                            }
+                            if (result.ok && result.rttMs in 1 until settings.maxPingMs.coerceAtLeast(5000)) {
+                                ProxyWithPing(
+                                    url = proxyUrl,
+                                    pingMs = result.rttMs,
+                                    profileLabel = profileLabel,
+                                    status = ProxyStatus.AVAILABLE,
+                                    statusText = "Доступен"
+                                )
+                            } else null
+                        }
 
-                    val result = try {
-                        MtprotoChecker.checkUrl(proxyUrl, connectMs, responseMs)
-                    } catch (_: Exception) {
-                        MtprotoChecker.CheckResult(false, -1, "error")
-                    }
-
-                    val item = if (
-                        result.ok &&
-                        result.rttMs in 1 until settings.maxPingMs.coerceAtLeast(5000)
-                    ) {
-                        ProxyWithPing(
-                            url = proxyUrl,
-                            pingMs = result.rttMs,
-                            profileLabel = profileLabel,
-                            status = ProxyStatus.AVAILABLE,
-                            statusText = "Доступен"
-                        )
-                    } else null
-
-                    val (p, w, found) = mutex.withLock {
-                        processed++
                         if (item != null) {
                             results.add(item)
-                            working++
-                            if (stopAt > 0 && working >= stopAt) {
-                                stop = true
-                            }
+                            val foundCount = working.incrementAndGet()
+                            if (stopAt > 0 && foundCount >= stopAt) stopped.set(true)
                         }
-                        Triple(processed, working, item)
-                    }
-                    withContext(Dispatchers.Main) {
-                        onProgress(p, total, w)
-                        if (found != null) onFound(found)
+                        val processedCount = processed.incrementAndGet()
+                        val workingCount = working.get()
+                        withContext(Dispatchers.Main) {
+                            onProgress(processedCount, total, workingCount)
+                            if (item != null) onFound(item)
+                        }
                     }
                 }
-            }
+            }.awaitAll()
         }
-
-        jobs.awaitAll()
-        results.sortedBy { it.pingMs }
+        results.toList().sortedBy { it.pingMs }
     }
 
     fun parseProxyUrl(url: String): ProxyInfo? {
@@ -499,36 +307,66 @@ object ProxyManager {
         }
     }
 
-    suspend fun saveProxiesToFile(proxies: List<String>): File? = withContext(Dispatchers.IO) {
+    private suspend fun saveProxiesToFile(context: Context, proxies: List<String>): File? = withContext(Dispatchers.IO) {
         try {
             val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
             val fileName = "kupuproxy_$timestamp.txt"
-            val downloadsDir =
-                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-            if (!downloadsDir.exists()) downloadsDir.mkdirs()
-            val file = File(downloadsDir, fileName)
-            FileOutputStream(file).use { output ->
-                proxies.forEach { proxy ->
-                    output.write((proxy + "\n").toByteArray())
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val values = ContentValues().apply {
+                    put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+                    put(MediaStore.Downloads.MIME_TYPE, "text/plain")
+                    put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                    put(MediaStore.Downloads.IS_PENDING, 1)
                 }
+                val resolver = context.contentResolver
+                val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return@withContext null
+                try {
+                    resolver.openOutputStream(uri, "w")?.bufferedWriter(Charsets.UTF_8)?.use { writer ->
+                        proxies.forEach { writer.append(it).append('\n') }
+                    } ?: error("Не удалось открыть файл")
+                    values.clear()
+                    values.put(MediaStore.Downloads.IS_PENDING, 0)
+                    resolver.update(uri, values, null, null)
+                    File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), fileName)
+                } catch (error: Exception) {
+                    resolver.delete(uri, null, null)
+                    throw error
+                }
+            } else {
+                val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                if (!downloadsDir.exists()) downloadsDir.mkdirs()
+                val file = File(downloadsDir, fileName)
+                FileOutputStream(file).bufferedWriter(Charsets.UTF_8).use { writer ->
+                    proxies.forEach { writer.append(it).append('\n') }
+                }
+                file
             }
-            file
         } catch (_: Exception) {
             null
         }
     }
 
-    /** Сохраняет и в Downloads, и в вечный app-cache. */
+    /** Сохраняет список в кэш приложения и Downloads через MediaStore. */
     suspend fun saveProxiesEverywhere(context: Context, proxies: List<String>): File? {
         ProxyCache.saveRawList(context, proxies)
-        return saveProxiesToFile(proxies)
+        return saveProxiesToFile(context, proxies)
     }
 
     suspend fun loadProxiesFromFile(contentResolver: ContentResolver, uri: Uri): List<String> =
         withContext(Dispatchers.IO) {
             try {
                 contentResolver.openInputStream(uri)?.use { input ->
-                    val body = input.bufferedReader().readText()
+                    val body = input.bufferedReader().use { reader ->
+                        val buffer = CharArray(16 * 1024)
+                        val output = StringBuilder()
+                        while (output.length < ProxyParser.MAX_INPUT_CHARS) {
+                            val remaining = ProxyParser.MAX_INPUT_CHARS - output.length
+                            val read = reader.read(buffer, 0, minOf(buffer.size, remaining))
+                            if (read < 0) break
+                            output.append(buffer, 0, read)
+                        }
+                        output.toString()
+                    }
                     parseProxyLinks(body).ifEmpty {
                         body.lineSequence()
                             .map { it.trim() }

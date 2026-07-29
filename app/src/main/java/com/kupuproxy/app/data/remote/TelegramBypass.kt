@@ -91,7 +91,7 @@ object TelegramBypass {
     fun browserHeaders(): Map<String, String> = mapOf(
         "User-Agent" to
             "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 " +
-            "(KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36 KupuProxy/1.3.3.1",
+            "(KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36 KupuProxy/${com.kupuproxy.app.BuildConfig.VERSION_NAME}",
         "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.7",
         "Accept-Language" to "en-US,en;q=0.9,ru;q=0.8"
     )
