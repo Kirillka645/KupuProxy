@@ -240,4 +240,10 @@
     <string name="rescan_done_body">Proxies found: %1$d</string>
     <string name="rescan_kort_error" />
     <string name="sources_summary">Sources: %1$d of %2$d responded</string>
+
+    <string name="update_channel_name">应用更新</string>
+    <string name="update_notification_title">KupuProxy %1$s 可用</string>
+    <string name="update_notification_body">点按以下载并安装已校验的 APK</string>
+    <string name="settings_auto_update">自动检查更新</string>
+    <string name="settings_auto_update_summary">每 6 小时在后台检查 GitHub Releases</string>
 </resources>

@@ -83,6 +83,7 @@ import com.kupuproxy.app.updater.GitHubRelease
 import com.kupuproxy.app.updater.UpdateCheckResult
 import com.kupuproxy.app.updater.UpdateChecker
 import com.kupuproxy.app.work.ProxyRescanWorker
+import com.kupuproxy.app.work.UpdateCheckWorker
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -132,6 +133,7 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch { promoDismissed = promoPreferences.isPromoDismissed() }
         if (!handleManualUpdateCheck(intent)) checkForUpdates()
         ProxyRescanWorker.schedule(this, com.kupuproxy.app.work.ProxyRefreshPreferences.load(this))
+        UpdateCheckWorker.schedule(this)
         lifecycleScope.launch { ProxyCache.migrateCleanup(this@MainActivity) }
     }
 

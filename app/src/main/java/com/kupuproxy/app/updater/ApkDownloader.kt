@@ -9,6 +9,7 @@ import android.os.Build
 import android.provider.Settings
 import androidx.core.content.FileProvider
 import com.kupuproxy.app.BuildConfig
+import com.kupuproxy.app.core.util.readUtf8Bounded
 import java.io.File
 import java.io.FileOutputStream
 import java.security.MessageDigest
@@ -113,9 +114,8 @@ class ApkDownloader(
             if (!response.isSuccessful) error("Не удалось загрузить SHA-256")
             val body = response.body ?: error("Пустой SHA-256")
             require(body.contentLength() < 0 || body.contentLength() <= 1_024) { "SHA-256 файл слишком большой" }
-            val bytes = body.source().readByteArray(1_025)
-            require(bytes.size <= 1_024) { "SHA-256 файл слишком большой" }
-            SHA256_REGEX.find(bytes.toString(Charsets.UTF_8))?.value ?: error("Некорректный SHA-256")
+            val text = body.source().readUtf8Bounded(1_024)
+            SHA256_REGEX.find(text)?.value ?: error("Некорректный SHA-256")
         }
     }
 

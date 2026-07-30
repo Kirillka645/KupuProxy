@@ -240,4 +240,10 @@
     <string name="rescan_done_body">Proxies found: %1$d</string>
     <string name="rescan_kort_error" />
     <string name="sources_summary">Sources: %1$d of %2$d responded</string>
+
+    <string name="update_channel_name">Mises à jour</string>
+    <string name="update_notification_title">KupuProxy %1$s est disponible</string>
+    <string name="update_notification_body">Appuyez pour télécharger et installer l\'APK vérifié</string>
+    <string name="settings_auto_update">Vérification automatique</string>
+    <string name="settings_auto_update_summary">Vérifier GitHub Releases en arrière-plan toutes les 6 heures</string>
 </resources>

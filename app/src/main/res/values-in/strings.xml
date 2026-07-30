@@ -240,4 +240,10 @@
     <string name="rescan_done_body">Proxies found: %1$d</string>
     <string name="rescan_kort_error" />
     <string name="sources_summary">Sources: %1$d of %2$d responded</string>
+
+    <string name="update_channel_name">Pembaruan aplikasi</string>
+    <string name="update_notification_title">KupuProxy %1$s tersedia</string>
+    <string name="update_notification_body">Ketuk untuk mengunduh dan memasang APK terverifikasi</string>
+    <string name="settings_auto_update">Pemeriksaan pembaruan otomatis</string>
+    <string name="settings_auto_update_summary">Periksa GitHub Releases di latar belakang setiap 6 jam</string>
 </resources>

@@ -240,4 +240,10 @@
     <string name="rescan_done_body">Proxies found: %1$d</string>
     <string name="rescan_kort_error" />
     <string name="sources_summary">Sources: %1$d of %2$d responded</string>
+
+    <string name="update_channel_name">تحديثات التطبيق</string>
+    <string name="update_notification_title">الإصدار %1$s متوفر</string>
+    <string name="update_notification_body">اضغط لتنزيل وتثبيت حزمة APK الموثقة</string>
+    <string name="settings_auto_update">التحقق التلقائي من التحديثات</string>
+    <string name="settings_auto_update_summary">التحقق من GitHub Releases في الخلفية كل 6 ساعات</string>
 </resources>

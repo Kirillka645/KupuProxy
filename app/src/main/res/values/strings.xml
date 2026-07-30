@@ -252,4 +252,10 @@
     <string name="rescan_done_body">Proxies found: %1$d</string>
     <string name="rescan_kort_error">Could not update verified snapshot</string>
     <string name="sources_summary">Sources: %1$d of %2$d responded</string>
+
+    <string name="update_channel_name">App updates</string>
+    <string name="update_notification_title">KupuProxy %1$s is available</string>
+    <string name="update_notification_body">Tap to download and install the verified APK</string>
+    <string name="settings_auto_update">Automatic update check</string>
+    <string name="settings_auto_update_summary">Check GitHub Releases in the background every 6 hours</string>
 </resources>
