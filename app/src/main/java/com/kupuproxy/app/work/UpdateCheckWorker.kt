@@ -23,11 +23,6 @@ import com.kupuproxy.app.updater.UpdateCheckResult
 import com.kupuproxy.app.updater.UpdateChecker
 import java.util.concurrent.TimeUnit
 
-/**
- * Периодически проверяет GitHub Releases и уведомляет пользователя о новой версии.
- * Раньше проверка жила только в onCreate MainActivity — то есть «автообновления»
- * фактически не было, если приложение не открывали.
- */
 class UpdateCheckWorker(
     appContext: Context,
     params: WorkerParameters
@@ -39,7 +34,7 @@ class UpdateCheckWorker(
         return when (val result = checker.checkForUpdate(BuildConfig.VERSION_NAME)) {
             is UpdateCheckResult.UpdateAvailable -> {
                 val tag = result.release.tagName
-                if (UpdatePreferences.shouldNotifyFor(applicationContext, tag)) {
+                if (UpdatePreferences.shouldNotifyFor(applicationContext, tag) && canPostNotifications()) {
                     notifyUpdate(tag)
                     UpdatePreferences.markNotified(applicationContext, tag)
                 }
@@ -54,9 +49,12 @@ class UpdateCheckWorker(
         }
     }
 
+    private fun canPostNotifications(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            applicationContext.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
     private fun notifyUpdate(tag: String) {
-        val nm = applicationContext
-            .getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val nm = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             nm.createNotificationChannel(
                 NotificationChannel(

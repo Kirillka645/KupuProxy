@@ -2,10 +2,13 @@ package com.kupuproxy.app.data.export
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import androidx.core.content.FileProvider
 import com.kupuproxy.app.domain.model.ProxyEndpoint
 import com.kupuproxy.app.domain.parser.ProxyParser
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 
 object ProxyExporter {
 
@@ -57,4 +60,14 @@ object ProxyExporter {
             )
         )
     }
+
+    fun exportToFile(context: Context, fileName: String, body: String): Uri {
+        val dir = File(context.cacheDir, "exports").apply { mkdirs() }
+        val out = File(dir, sanitizeFileName(fileName))
+        out.writeText(body)
+        return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", out)
+    }
+
+    private fun sanitizeFileName(value: String): String =
+        value.replace(Regex("[^A-Za-z0-9._-]"), "_").take(120).ifBlank { "kupuproxy-export.txt" }
 }
