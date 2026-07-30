@@ -14,9 +14,9 @@ Android-приложение для поиска и проверки **MTProto-�
 
 Плагин: `.kupu scan` / `.kupu chat` / `.kupu auto` / `.kupu update` (в чат пишет только `.kupu chat`).
 
-## Возможности (v1.3.3.5)
+## Возможности (v1.3.3.6)
 
-- **Kort Verified Collector**: единый автообновляемый MTProto snapshot, регионы RU/EU/US/Asia, upstream freshness и metadata-aware приоритет
+- **Выбор языка**: 20 языков + Follow system
 - Фоновое обновление каждые 3/6/12/24 часа через WorkManager с выбором любой или только безлимитной сети
 - Внешняя проверка используется только для приоритета: итог всегда подтверждает собственный **MTProto handshake KupuProxy**
 - Полностью обновлённый интерфейс **Jetpack Compose + Material 3**

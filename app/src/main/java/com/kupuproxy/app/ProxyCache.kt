@@ -8,6 +8,8 @@ import java.io.File
 import org.json.JSONArray
 import org.json.JSONObject
 
+import java.io.IOException
+
 /**
  * Долгосрочное локальное хранилище:
  * - кэш последнего успешного списка (обновляется при каждой загрузке)
@@ -39,6 +41,22 @@ object ProxyCache {
 
     fun cacheDir(context: Context): File =
         File(context.filesDir, "proxy_store").also { if (!it.exists()) it.mkdirs() }
+
+    fun migrateCleanup(context: Context) {
+        try {
+            val raw = File(cacheDir(context), CACHE_FILE)
+            if (!raw.exists()) return
+            val lines = raw.readLines().map { it.trim() }.filter { it.isNotBlank() }
+            val cleaned = lines.filter { line ->
+                !line.contains("yagami", ignoreCase = true) &&
+                    !line.contains("Yagami200", ignoreCase = true)
+            }
+            if (cleaned.size < lines.size) {
+                raw.writeText(cleaned.joinToString("\n"))
+            }
+        } catch (_: IOException) {
+        }
+    }
 
     fun saveRawList(context: Context, proxies: List<String>) {
         try {
