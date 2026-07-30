@@ -34,7 +34,7 @@ data class ProfileSettings(
             return when (effective) {
                 NetworkProfileMode.MOBILE -> ProfileSettings(
                     mode = effective,
-                    label = "LTE / мобильный",
+                    label = context?.getString(R.string.profile_mobile) ?: "LTE / mobile",
                     batchSize = 32,          // параллельных проверок
                     connectTimeoutMs = 1500, // TCP
                     maxPingMs = 6000,
@@ -43,7 +43,7 @@ data class ProfileSettings(
                 )
                 else -> ProfileSettings(
                     mode = NetworkProfileMode.WIFI,
-                    label = "Wi‑Fi",
+                    label = context?.getString(R.string.profile_wifi) ?: "Wi-Fi",
                     batchSize = 48,
                     connectTimeoutMs = 1800,
                     maxPingMs = 8000,
@@ -76,8 +76,8 @@ data class ProfileSettings(
 
         fun currentLabel(context: Context): String {
             return when (detect(context)) {
-                NetworkProfileMode.MOBILE -> "Сейчас: LTE / мобильный"
-                else -> "Сейчас: Wi‑Fi"
+                NetworkProfileMode.MOBILE -> context.getString(R.string.profile_current_mobile)
+                else -> context.getString(R.string.profile_current_wifi)
             }
         }
     }

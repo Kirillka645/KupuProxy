@@ -5,34 +5,44 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.AssistChip
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.kupuproxy.app.MainActivity
 import com.kupuproxy.app.R
+import com.kupuproxy.app.core.locale.AppLocaleManager
 import com.kupuproxy.app.core.util.TelegramIntents
 import com.kupuproxy.app.ui.components.channel.ChannelSettingsListItem
 import com.kupuproxy.app.ui.theme.KupuProxyTheme
@@ -40,6 +50,8 @@ import com.kupuproxy.app.work.ProxyRefreshPreferences
 
 class SettingsActivity : ComponentActivity() {
     private var refreshSettings by mutableStateOf(ProxyRefreshPreferences.Settings())
+    private var languageDialogVisible by mutableStateOf(false)
+
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -67,6 +79,8 @@ class SettingsActivity : ComponentActivity() {
                             .padding(padding)
                             .verticalScroll(rememberScrollState())
                     ) {
+                        LanguageListItem()
+                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                         ChannelSettingsListItem(
                             onClick = { TelegramIntents.openTelegramChannel(this@SettingsActivity) }
                         )
@@ -108,9 +122,9 @@ class SettingsActivity : ComponentActivity() {
                             }
                         )
                         Text("Интервал", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 16.dp))
-                        androidx.compose.foundation.layout.Row(
+                        Row(
                             modifier = Modifier.padding(horizontal = 16.dp),
-                            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             listOf(3L, 6L, 12L, 24L).forEach { hours ->
                                 AssistChip(
@@ -160,7 +174,7 @@ class SettingsActivity : ComponentActivity() {
                                         Intent(this@SettingsActivity, MainActivity::class.java).apply {
                                             addFlags(
                                                 Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                                                    Intent.FLAG_ACTIVITY_SINGLE_TOP
+                                                        Intent.FLAG_ACTIVITY_SINGLE_TOP
                                             )
                                             putExtra(MainActivity.EXTRA_CHECK_UPDATES, true)
                                         }
@@ -182,8 +196,94 @@ class SettingsActivity : ComponentActivity() {
                         )
                     }
                 }
+                if (languageDialogVisible) LanguageDialog()
             }
         }
+    }
+
+    @Composable
+    private fun LanguageListItem() {
+        val selectedTag = AppLocaleManager.currentTag()
+        val selectedName = AppLocaleManager.supportedLocales
+            .firstOrNull { it.languageTag == selectedTag }
+            ?.nativeName
+            ?: "Как в системе"
+        ListItem(
+            headlineContent = { Text("Язык приложения") },
+            supportingContent = {
+                Column {
+                    Text(selectedName)
+                    Text(
+                        "Выберите язык интерфейса KupuProxy",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            },
+            trailingContent = {
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null
+                )
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { languageDialogVisible = true }
+        )
+    }
+
+    @Composable
+    private fun LanguageDialog() {
+        val selectedTag = AppLocaleManager.currentTag()
+        AlertDialog(
+            onDismissRequest = { languageDialogVisible = false },
+            title = { Text("Язык приложения") },
+            text = {
+                LazyColumn {
+                    item {
+                        LanguageOption(
+                            title = "Как в системе",
+                            selected = selectedTag == null,
+                            onClick = { selectLanguage(null) }
+                        )
+                    }
+                    items(AppLocaleManager.supportedLocales, key = { it.languageTag }) { locale ->
+                        LanguageOption(
+                            title = locale.nativeName,
+                            selected = selectedTag == locale.languageTag,
+                            onClick = { selectLanguage(locale.languageTag) }
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { languageDialogVisible = false }) {
+                    Text("Отмена")
+                }
+            }
+        )
+    }
+
+    @Composable
+    private fun LanguageOption(
+        title: String,
+        selected: Boolean,
+        onClick: () -> Unit
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            RadioButton(selected = selected, onClick = onClick)
+            Text(title, modifier = Modifier.padding(start = 8.dp))
+        }
+    }
+
+    private fun selectLanguage(languageTag: String?) {
+        languageDialogVisible = false
+        AppLocaleManager.apply(languageTag)
     }
 
     private fun saveRefresh(settings: ProxyRefreshPreferences.Settings) {

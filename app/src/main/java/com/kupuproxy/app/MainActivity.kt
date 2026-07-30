@@ -131,6 +131,7 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch { promoDismissed = promoPreferences.isPromoDismissed() }
         if (!handleManualUpdateCheck(intent)) checkForUpdates()
         ProxyRescanWorker.schedule(this, com.kupuproxy.app.work.ProxyRefreshPreferences.load(this))
+        lifecycleScope.launch { ProxyCache.migrateCleanup(this@MainActivity) }
     }
 
     override fun onNewIntent(intent: Intent) {
