@@ -47,15 +47,18 @@ import com.kupuproxy.app.core.util.TelegramIntents
 import com.kupuproxy.app.ui.components.channel.ChannelSettingsListItem
 import com.kupuproxy.app.ui.theme.KupuProxyTheme
 import com.kupuproxy.app.work.ProxyRefreshPreferences
+import com.kupuproxy.app.work.UpdatePreferences
 
 class SettingsActivity : ComponentActivity() {
     private var refreshSettings by mutableStateOf(ProxyRefreshPreferences.Settings())
     private var languageDialogVisible by mutableStateOf(false)
+    private var autoUpdateEnabled by mutableStateOf(true)
 
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         refreshSettings = ProxyRefreshPreferences.load(this)
+        autoUpdateEnabled = UpdatePreferences.isAutoCheckEnabled(this)
         setContent {
             KupuProxyTheme {
                 Scaffold(
@@ -153,6 +156,24 @@ class SettingsActivity : ComponentActivity() {
                             }
                         )
                         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                        ListItem(
+                            headlineContent = { Text(stringResource(R.string.settings_auto_update)) },
+                            supportingContent = {
+                                Text(
+                                    stringResource(R.string.settings_auto_update_summary),
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            },
+                            trailingContent = {
+                                Switch(
+                                    checked = autoUpdateEnabled,
+                                    onCheckedChange = { enabled ->
+                                        autoUpdateEnabled = enabled
+                                        UpdatePreferences.setAutoCheckEnabled(this@SettingsActivity, enabled)
+                                    }
+                                )
+                            }
+                        )
                         ListItem(
                             headlineContent = { Text("Проверить обновления приложения") },
                             supportingContent = {

@@ -252,4 +252,10 @@
     <string name="rescan_done_body">Найдено прокси: %1$d</string>
     <string name="rescan_kort_error">Не удалось обновить verified snapshot</string>
     <string name="sources_summary">Источники: %1$d из %2$d ответили</string>
+
+    <string name="update_channel_name">Обновления приложения</string>
+    <string name="update_notification_title">Доступна KupuProxy %1$s</string>
+    <string name="update_notification_body">Нажмите, чтобы скачать и установить проверенный APK</string>
+    <string name="settings_auto_update">Автопроверка обновлений</string>
+    <string name="settings_auto_update_summary">Проверять GitHub Releases в фоне каждые 6 часов</string>
 </resources>

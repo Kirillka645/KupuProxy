@@ -240,4 +240,10 @@
     <string name="rescan_done_body">Proxies found: %1$d</string>
     <string name="rescan_kort_error" />
     <string name="sources_summary">Sources: %1$d of %2$d responded</string>
+
+    <string name="update_channel_name">به‌روزرسانی‌های برنامه</string>
+    <string name="update_notification_title">نسخه %1$s موجود است</string>
+    <string name="update_notification_body">برای دانلود و نصب APK تأییدشده ضربه بزنید</string>
+    <string name="settings_auto_update">بررسی خودکار به‌روزرسانی</string>
+    <string name="settings_auto_update_summary">بررسی GitHub Releases در پس‌زمینه هر ۶ ساعت</string>
 </resources>

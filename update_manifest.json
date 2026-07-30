@@ -1,11 +1,11 @@
 {
-  "version": "1.3.3.7",
-  "tag_name": "v1.3.3.7",
-  "apk_name": "KupuProxy-v1.3.3.7.apk",
-  "apk_url": "https://github.com/Kirillka645/KupuProxy/releases/download/v1.3.3.7/KupuProxy-v1.3.3.7.apk",
-  "apk_size": 15940408,
-  "sha256": "75c7e237d71a3847ec8b059d3436ec01b5b7704d1212baa770378640c1a8e569",
-  "sha256_url": "https://github.com/Kirillka645/KupuProxy/releases/download/v1.3.3.7/KupuProxy-v1.3.3.7.apk.sha256",
-  "release_url": "https://github.com/Kirillka645/KupuProxy/releases/tag/v1.3.3.7",
-  "changelog": "Добавлена карточка Dubblebyte free MTProto на главный экран."
+  "version": "1.3.3.8",
+  "tag_name": "v1.3.3.8",
+  "apk_name": "KupuProxy-v1.3.3.8.apk",
+  "apk_url": "https://github.com/Kirillka645/KupuProxy/releases/download/v1.3.3.8/KupuProxy-v1.3.3.8.apk",
+  "apk_size": 15948600,
+  "sha256": "103c9bc576d3eebbb791c3c5a8f85976e2bcd98a8cdd8339022e7a8cd9160419",
+  "sha256_url": "https://github.com/Kirillka645/KupuProxy/releases/download/v1.3.3.8/KupuProxy-v1.3.3.8.apk.sha256",
+  "release_url": "https://github.com/Kirillka645/KupuProxy/releases/tag/v1.3.3.8",
+  "changelog": "Исправлено автообновление: проверка релизов падала из-за неверного лимита чтения ответа (okio EOFException). Добавлена фоновая автопроверка обновлений каждые 6 часов с уведомлением."
 }

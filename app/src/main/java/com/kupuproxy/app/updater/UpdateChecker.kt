@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import com.kupuproxy.app.BuildConfig
+import com.kupuproxy.app.core.util.readUtf8Bounded
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -249,9 +250,7 @@ class UpdateChecker(
             val body = response.body ?: throw IOException("Empty response")
             val declared = body.contentLength()
             if (declared > MAX_METADATA_BYTES) throw IOException("Response is too large")
-            val bytes = body.source().readByteArray(MAX_METADATA_BYTES + 1)
-            if (bytes.size > MAX_METADATA_BYTES) throw IOException("Response is too large")
-            bytes.toString(Charsets.UTF_8)
+            body.source().readUtf8Bounded(MAX_METADATA_BYTES)
         }
     }
 

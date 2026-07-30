@@ -2,6 +2,7 @@ package com.kupuproxy.app.data.remote
 
 import com.kupuproxy.app.BuildConfig
 import com.kupuproxy.app.core.Constants
+import com.kupuproxy.app.core.util.readAllBounded
 import java.net.URI
 import java.util.concurrent.TimeUnit
 import kotlin.random.Random
@@ -104,8 +105,7 @@ object HttpSupport {
                 val body = response.body ?: return null to response.header("ETag")
                 val declared = body.contentLength()
                 require(declared < 0 || declared <= maxBytes) { "Ответ источника слишком большой" }
-                val bytes = body.source().readByteArray(maxBytes + 1)
-                require(bytes.size <= maxBytes) { "Ответ источника слишком большой" }
+                val bytes = body.source().readAllBounded(maxBytes)
                 return bytes.toString(Charsets.UTF_8) to response.header("ETag")
             }
         }
