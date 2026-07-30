@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.MergeType
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Download
@@ -217,6 +218,33 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 item { KortCollectorCard(kortStatus) }
+                item {
+                    Card(
+                        onClick = { openUrl("https://github.com/dubblebyte/free-mtproto-proxies") },
+                        shape = RoundedCornerShape(20.dp)
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Public, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.size(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text("Dubblebyte free MTProto", fontWeight = FontWeight.Bold)
+                                Text(
+                                    "github.com/dubblebyte/free-mtproto-proxies",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Icon(
+                                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
                 item { SectionTitle("Быстрый старт", "Выберите один источник или запустите полный сбор") }
                 items(homeSources, key = HomeSource::id) { source ->
                     ActionCard(
@@ -770,7 +798,7 @@ class MainActivity : AppCompatActivity() {
     private val homeSources = listOf(
         HomeSource("solispirit", "SoliSpirit Mega", "Большой автообновляемый список", Icons.Default.Public),
         HomeSource("shablin_valid", "Shablin latency", "Живые MTProto, отсортированные по задержке", Icons.Default.Speed),
-        HomeSource("dubblebyte", "Dubblebyte MTProto", "Дополнительный регулярно обновляемый список", Icons.Default.Public),
+        HomeSource("dubblebyte", "Dubblebyte free MTProto", "github.com/dubblebyte/free-mtproto-proxies", Icons.Default.Public),
         HomeSource("surfboard", "SurfboardV2ray", "Основной и предварительно проверенный списки", Icons.Default.Speed),
         HomeSource("argh94_scraper", "Argh94 Scraper", "Агрегация публичных каналов", Icons.Default.Search)
     )
