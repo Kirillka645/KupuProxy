@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
     <string name="app_name">KupuProxy</string>
     <string name="tagline">Live scan · Telegram-like MTProto · offline seed</string>
     <string name="choose_source">Mega-scan — working proxies appear live</string>
@@ -21,6 +21,7 @@
     <string name="stop">Stop</string>
     <string name="retry">Retry</string>
     <string name="save">Save</string>
+    <string name="delete">Delete</string>
     <string name="copy">Copy</string>
     <string name="share">Share</string>
     <string name="filter">Filter</string>
@@ -111,6 +112,7 @@
     <string name="profile_current_wifi">Now: Wi-Fi</string>
     <string name="profile_current_mobile">Now: LTE / mobile</string>
     <string name="profile_limits">Up to %1$d addresses · %2$d workers · target %3$d</string>
+    <string name="profile_limits_all">Up to %1$d addresses · %2$d workers · scans the complete list</string>
     <string name="home_starting">Starting: %1$s</string>
     <string name="home_empty_saved">The list is empty — run a check first</string>
     <string name="home_empty_favorites">Favorites are empty</string>
@@ -258,4 +260,29 @@
     <string name="update_notification_body">Tap to download and install the verified APK</string>
     <string name="settings_auto_update">Automatic update check</string>
     <string name="settings_auto_update_summary">Check GitHub Releases in the background every 6 hours</string>
+    <string name="appearance_title">Personal design</string>
+    <string name="appearance_summary">Colors, corners and text size</string>
+    <string name="appearance_reset">Reset</string>
+    <string name="appearance_mode">Theme mode</string>
+    <string name="appearance_dynamic">Dynamic system colors</string>
+    <string name="appearance_dynamic_summary">Available on Android 12 and newer</string>
+    <string name="appearance_palette">Color palette</string>
+    <string name="appearance_edit_colors">Edit custom colors</string>
+    <string name="appearance_custom_colors">Custom colors</string>
+    <string name="appearance_hex_hint">Enter accessible colors in #RRGGBB format. Text contrast is selected automatically.</string>
+    <string name="appearance_primary_color">Primary color</string>
+    <string name="appearance_accent_color">Accent color</string>
+    <string name="appearance_corners">Corner style</string>
+    <string name="appearance_corner_compact">Compact</string>
+    <string name="appearance_corner_balanced">Balanced</string>
+    <string name="appearance_corner_round">Round</string>
+    <string name="appearance_text_size">Text size</string>
+    <string name="appearance_text_small">Small</string>
+    <string name="appearance_text_normal">Normal</string>
+    <string name="appearance_text_large">Large</string>
+    <string name="appearance_text_extra_large">Extra large</string>
+    <string name="appearance_saved_automatically">Changes are previewed live and saved automatically.</string>
+    <string name="appearance_preview_title">Your KupuProxy</string>
+    <string name="appearance_preview_body">This preview uses your selected palette, corners and text size.</string>
+    <string name="appearance_preview_button">Preview button</string>
 </resources>

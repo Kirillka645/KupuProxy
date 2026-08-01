@@ -18,16 +18,12 @@ import okhttp3.OkHttpClient
  * Быстрый «TG mega»-источник:
  * 1) параллельно тянет GitHub-скрейпы TG-каналов (CDN) — основной объём 50–300+;
  * 2) параллельно race-зеркала по популярным каналам (если t.me мёртв — jina/rsshub);
- * 3) early-exit при [TARGET_MIN] найденных.
+ * 3) полный проход по каналам без ранней остановки; дедупликация выполняется по endpoint.
  */
-class TelegramMegaSource(
-    private val targetMin: Int = TARGET_MIN,
-    private val targetSoft: Int = TARGET_SOFT,
-    override val enabledByDefault: Boolean = true
-) : ProxySource {
+class TelegramMegaSource(override val enabledByDefault: Boolean = true) : ProxySource {
 
     override val id: String = "tg_mega"
-    override val displayName: String = "TG каналы · mega"
+    override val displayName: String = "Telegram · mega"
     override val kind: SourceKind = SourceKind.TELEGRAM_CHANNEL
 
     override suspend fun fetch(client: OkHttpClient): List<RawProxyEntry> {
@@ -44,46 +40,25 @@ class TelegramMegaSource(
         // --- Phase 0: MTPro.XYZ / hookzof (~50 live proxies, no t.me) ---
         try {
             add(MtproXyzSource().fetch(client))
-            if (bag.size >= targetSoft) return bag.values.toList()
-        } catch (_: Exception) {
-        }
+        } catch (_: Exception) {}
 
         // --- Phase 1: scraped lists from GitHub (no Telegram needed) ---
         val scrapeUrls = TelegramBypass.telegramScrapedListUrls()
-        val scraped = HttpSupport.downloadAllParallel(
-            client = client,
-            urls = scrapeUrls,
-            headers = TelegramBypass.browserHeaders(),
-            minUsefulBytes = 40,
-            maxParallel = 8,
-            perUrlTimeoutMs = 9_000L
-        )
-        for ((body, _) in scraped) {
-            add(ProxyParser.parse(normalizeBody(body), id, displayName))
-            if (bag.size >= targetSoft) return bag.values.toList()
-        }
-
-        // --- Phase 2: live channel mirrors (parallel, few channels) ---
-        if (bag.size < targetMin) {
-            val channels = TelegramBypass.POPULAR_CHANNELS
-            val channelHits = fetchChannelsParallel(fast, channels, need = targetMin - bag.size)
-            add(channelHits)
-        }
-
-        // --- Phase 3: if still thin, race remaining scrape mirrors one more pass ---
-        if (bag.size < targetMin) {
-            val extra = HttpSupport.downloadAllParallel(
+        val scraped =
+            HttpSupport.downloadAllParallel(
                 client = client,
-                urls = scrapeUrls.shuffled().take(12),
+                urls = scrapeUrls,
                 headers = TelegramBypass.browserHeaders(),
                 minUsefulBytes = 40,
-                maxParallel = 6,
-                perUrlTimeoutMs = 8_000L
+                maxParallel = 8,
+                perUrlTimeoutMs = 9_000L,
             )
-            for ((body, _) in extra) {
-                add(ProxyParser.parse(normalizeBody(body), id, displayName))
-            }
+        for ((body, _) in scraped) {
+            add(ProxyParser.parse(normalizeBody(body), id, displayName))
         }
+
+        // --- Phase 2: all configured live channel mirrors ---
+        add(fetchChannelsParallel(fast, TelegramBypass.POPULAR_CHANNELS))
 
         return bag.values.toList()
     }
@@ -91,47 +66,48 @@ class TelegramMegaSource(
     private suspend fun fetchChannelsParallel(
         client: OkHttpClient,
         channels: List<String>,
-        need: Int
     ): List<RawProxyEntry> = coroutineScope {
         val bag = LinkedHashMap<String, RawProxyEntry>()
         val sem = Semaphore(4)
-        channels.map { ch ->
-            async {
-                sem.withPermit {
-                    withTimeoutOrNull(11_000L) {
-                        fetchOneChannel(client, ch)
-                    }.orEmpty()
+        channels
+            .map { ch ->
+                async {
+                    sem.withPermit {
+                        withTimeoutOrNull(11_000L) {
+                                fetchOneChannel(client, ch)
+                            }
+                            .orEmpty()
+                    }
                 }
             }
-        }.awaitAll().forEach { list ->
-            for (e in list) {
-                val key = "${e.host.lowercase()}:${e.port}:${e.secret.lowercase()}"
-                bag.putIfAbsent(key, e)
+            .awaitAll()
+            .forEach { list ->
+                for (e in list) {
+                    val key = "${e.host.lowercase()}:${e.port}:${e.secret.lowercase()}"
+                    bag.putIfAbsent(key, e)
+                }
             }
-        }
         bag.values.toList()
     }
 
     private suspend fun fetchOneChannel(
         client: OkHttpClient,
-        channel: String
+        channel: String,
     ): List<RawProxyEntry> {
         val urls = TelegramBypass.channelFastUrls(channel)
-        val raced = HttpSupport.downloadRace(
-            client = client,
-            urls = urls,
-            headers = TelegramBypass.browserHeaders(),
-            minUsefulBytes = 80,
-            perUrlTimeoutMs = 6_500L,
-            overallTimeoutMs = 9_000L
-        ) ?: return emptyList()
+        val raced =
+            HttpSupport.downloadRace(
+                client = client,
+                urls = urls,
+                headers = TelegramBypass.browserHeaders(),
+                minUsefulBytes = 80,
+                perUrlTimeoutMs = 6_500L,
+                overallTimeoutMs = 9_000L,
+            ) ?: return emptyList()
         return ProxyParser.parse(normalizeBody(raced.first), id, "TG @$channel")
     }
 
     companion object {
-        const val TARGET_MIN = 50
-        const val TARGET_SOFT = 120
-
         fun normalizeBody(body: String): String {
             return body
                 .replace("\\u0026", "&")

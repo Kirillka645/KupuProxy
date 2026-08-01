@@ -70,6 +70,12 @@
             android:parentActivityName=".MainActivity" />
 
         <activity
+            android:name=".ui.AppearanceActivity"
+            android:exported="false"
+            android:parentActivityName=".ui.SettingsActivity"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
             android:name=".ui.AboutActivity"
             android:exported="false"
             android:parentActivityName=".MainActivity" />
@@ -77,7 +83,8 @@
         <activity
             android:name=".ui.UserSourcesActivity"
             android:exported="false"
-            android:parentActivityName=".MainActivity" />
+            android:parentActivityName=".MainActivity"
+            android:windowSoftInputMode="adjustResize" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

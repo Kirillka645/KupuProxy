@@ -119,7 +119,7 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "kupuproxy.db"
-                ).fallbackToDestructiveMigration().build().also { instance = it }
+                ).build().also { instance = it }
             }
         }
     }

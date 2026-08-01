@@ -2,8 +2,8 @@ package com.kupuproxy.app.ui
 
 import android.content.Intent
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -18,6 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -46,10 +47,11 @@ import com.kupuproxy.app.core.locale.AppLocaleManager
 import com.kupuproxy.app.core.util.TelegramIntents
 import com.kupuproxy.app.ui.components.channel.ChannelSettingsListItem
 import com.kupuproxy.app.ui.theme.KupuProxyTheme
+import com.kupuproxy.app.ui.theme.kupuSafeScreen
 import com.kupuproxy.app.work.ProxyRefreshPreferences
 import com.kupuproxy.app.work.UpdatePreferences
 
-class SettingsActivity : ComponentActivity() {
+class SettingsActivity : AppCompatActivity() {
     private var refreshSettings by mutableStateOf(ProxyRefreshPreferences.Settings())
     private var languageDialogVisible by mutableStateOf(false)
     private var autoUpdateEnabled by mutableStateOf(true)
@@ -62,6 +64,7 @@ class SettingsActivity : ComponentActivity() {
         setContent {
             KupuProxyTheme {
                 Scaffold(
+                    modifier = Modifier.kupuSafeScreen(),
                     topBar = {
                         TopAppBar(
                             title = { Text(stringResource(R.string.settings_title)) },
@@ -69,99 +72,165 @@ class SettingsActivity : ComponentActivity() {
                                 IconButton(onClick = { finish() }) {
                                     Icon(
                                         Icons.AutoMirrored.Filled.ArrowBack,
-                                        contentDescription = null
+                                        contentDescription = null,
                                     )
                                 }
-                            }
+                            },
                         )
-                    }
+                    },
                 ) { padding ->
                     Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(padding)
-                            .verticalScroll(rememberScrollState())
+                        modifier =
+                            Modifier.fillMaxSize()
+                                .padding(padding)
+                                .verticalScroll(rememberScrollState())
                     ) {
                         LanguageListItem()
+                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                        ListItem(
+                            headlineContent = { Text(stringResource(R.string.appearance_title)) },
+                            supportingContent = {
+                                Text(
+                                    stringResource(R.string.appearance_summary),
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            },
+                            leadingContent = {
+                                Icon(Icons.Default.Palette, contentDescription = null)
+                            },
+                            trailingContent = {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                    contentDescription = null,
+                                )
+                            },
+                            modifier =
+                                Modifier.fillMaxWidth().clickable {
+                                    startActivity(
+                                        Intent(
+                                            this@SettingsActivity,
+                                            AppearanceActivity::class.java,
+                                        )
+                                    )
+                                },
+                        )
                         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                         ChannelSettingsListItem(
                             onClick = { TelegramIntents.openTelegramChannel(this@SettingsActivity) }
                         )
                         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                         ListItem(
-                            headlineContent = { Text("Мои источники прокси") },
+                            headlineContent = {
+                                Text(stringResource(R.string.settings_custom_sources))
+                            },
                             supportingContent = {
                                 Text(
-                                    "Свои URL (txt/json) для мега-скана — работают без Telegram",
-                                    style = MaterialTheme.typography.bodySmall
+                                    stringResource(R.string.settings_custom_sources_summary),
+                                    style = MaterialTheme.typography.bodySmall,
                                 )
                             },
                             trailingContent = {
                                 Icon(
                                     Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                    contentDescription = null
+                                    contentDescription = null,
                                 )
                             },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
+                            modifier =
+                                Modifier.fillMaxWidth().clickable {
                                     startActivity(
                                         Intent(
                                             this@SettingsActivity,
-                                            UserSourcesActivity::class.java
+                                            UserSourcesActivity::class.java,
                                         )
                                     )
-                                }
+                                },
                         )
                         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                         ListItem(
-                            headlineContent = { Text("Автообновление прокси") },
-                            supportingContent = { Text("Verified collector и основные GitHub-источники") },
+                            headlineContent = {
+                                Text(stringResource(R.string.settings_proxy_refresh))
+                            },
+                            supportingContent = {
+                                Text(stringResource(R.string.settings_proxy_refresh_summary))
+                            },
                             trailingContent = {
                                 Switch(
                                     checked = refreshSettings.enabled,
-                                    onCheckedChange = { saveRefresh(refreshSettings.copy(enabled = it)) }
+                                    onCheckedChange = {
+                                        saveRefresh(refreshSettings.copy(enabled = it))
+                                    },
                                 )
-                            }
+                            },
                         )
-                        Text("Интервал", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 16.dp))
+                        Text(
+                            stringResource(R.string.settings_interval),
+                            style = MaterialTheme.typography.labelLarge,
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                        )
                         Row(
                             modifier = Modifier.padding(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             listOf(3L, 6L, 12L, 24L).forEach { hours ->
                                 AssistChip(
                                     onClick = { saveRefresh(refreshSettings.copy(hours = hours)) },
-                                    label = { Text(if (refreshSettings.hours == hours) "✓ ${hours}ч" else "${hours}ч") }
+                                    label = {
+                                        Text(
+                                            stringResource(
+                                                if (refreshSettings.hours == hours)
+                                                    R.string.settings_hours_selected
+                                                else R.string.settings_hours,
+                                                hours,
+                                            )
+                                        )
+                                    },
                                 )
                             }
                         }
                         ListItem(
-                            headlineContent = { Text("Только безлимитная сеть") },
-                            supportingContent = { Text("Обычно Wi-Fi; Android определяет сеть как unmetered") },
+                            headlineContent = {
+                                Text(stringResource(R.string.settings_unmetered_only))
+                            },
+                            supportingContent = {
+                                Text(stringResource(R.string.settings_unmetered_summary))
+                            },
                             trailingContent = {
                                 Switch(
                                     checked = refreshSettings.wifiOnly,
-                                    onCheckedChange = { saveRefresh(refreshSettings.copy(wifiOnly = it)) }
+                                    onCheckedChange = {
+                                        saveRefresh(refreshSettings.copy(wifiOnly = it))
+                                    },
                                 )
-                            }
+                            },
                         )
                         ListItem(
-                            headlineContent = { Text("Источник Kort Verified") },
-                            supportingContent = {
-                                Text("Публичные generated feeds kort0881/telegram-proxy-collector. KupuProxy независимо проверяет MTProto handshake.")
+                            headlineContent = {
+                                Text(stringResource(R.string.settings_kort_source))
                             },
-                            modifier = Modifier.clickable {
-                                startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/kort0881/telegram-proxy-collector")))
-                            }
+                            supportingContent = {
+                                Text(stringResource(R.string.settings_kort_source_summary))
+                            },
+                            modifier =
+                                Modifier.clickable {
+                                    startActivity(
+                                        Intent(
+                                            Intent.ACTION_VIEW,
+                                            android.net.Uri.parse(
+                                                "https://github.com/kort0881/telegram-proxy-collector"
+                                            ),
+                                        )
+                                    )
+                                },
                         )
                         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                         ListItem(
-                            headlineContent = { Text(stringResource(R.string.settings_auto_update)) },
+                            headlineContent = {
+                                Text(stringResource(R.string.settings_auto_update))
+                            },
                             supportingContent = {
                                 Text(
                                     stringResource(R.string.settings_auto_update_summary),
-                                    style = MaterialTheme.typography.bodySmall
+                                    style = MaterialTheme.typography.bodySmall,
                                 )
                             },
                             trailingContent = {
@@ -169,51 +238,56 @@ class SettingsActivity : ComponentActivity() {
                                     checked = autoUpdateEnabled,
                                     onCheckedChange = { enabled ->
                                         autoUpdateEnabled = enabled
-                                        UpdatePreferences.setAutoCheckEnabled(this@SettingsActivity, enabled)
-                                    }
+                                        UpdatePreferences.setAutoCheckEnabled(
+                                            this@SettingsActivity,
+                                            enabled,
+                                        )
+                                    },
                                 )
-                            }
+                            },
                         )
                         ListItem(
-                            headlineContent = { Text("Проверить обновления приложения") },
+                            headlineContent = {
+                                Text(stringResource(R.string.settings_check_updates))
+                            },
                             supportingContent = {
                                 Text(
-                                    "Проверить GitHub Releases и безопасно установить подписанный APK",
-                                    style = MaterialTheme.typography.bodySmall
+                                    stringResource(R.string.settings_check_updates_summary),
+                                    style = MaterialTheme.typography.bodySmall,
                                 )
                             },
                             trailingContent = {
                                 Icon(
                                     Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                    contentDescription = null
+                                    contentDescription = null,
                                 )
                             },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
+                            modifier =
+                                Modifier.fillMaxWidth().clickable {
                                     startActivity(
-                                        Intent(this@SettingsActivity, MainActivity::class.java).apply {
-                                            addFlags(
-                                                Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                                        Intent(this@SettingsActivity, MainActivity::class.java)
+                                            .apply {
+                                                addFlags(
+                                                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
                                                         Intent.FLAG_ACTIVITY_SINGLE_TOP
-                                            )
-                                            putExtra(MainActivity.EXTRA_CHECK_UPDATES, true)
-                                        }
+                                                )
+                                                putExtra(MainActivity.EXTRA_CHECK_UPDATES, true)
+                                            }
                                     )
-                                }
+                                },
                         )
                         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                         Text(
                             text = stringResource(R.string.settings_hint),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(16.dp)
+                            modifier = Modifier.padding(16.dp),
                         )
                         Text(
-                            text = "Если Telegram недоступен: мега-скан берёт GitHub/CDN и зеркала каналов (Jina, RSSHub), не только t.me.",
+                            text = stringResource(R.string.settings_bypass_hint),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                         )
                     }
                 }
@@ -225,30 +299,28 @@ class SettingsActivity : ComponentActivity() {
     @Composable
     private fun LanguageListItem() {
         val selectedTag = AppLocaleManager.currentTag()
-        val selectedName = AppLocaleManager.supportedLocales
-            .firstOrNull { it.languageTag == selectedTag }
-            ?.nativeName
-            ?: "Как в системе"
+        val selectedName =
+            AppLocaleManager.supportedLocales
+                .firstOrNull { it.languageTag == selectedTag }
+                ?.nativeName ?: stringResource(R.string.language_follow_system)
         ListItem(
-            headlineContent = { Text("Язык приложения") },
+            headlineContent = { Text(stringResource(R.string.settings_language)) },
             supportingContent = {
                 Column {
                     Text(selectedName)
                     Text(
-                        "Выберите язык интерфейса KupuProxy",
-                        style = MaterialTheme.typography.bodySmall
+                        stringResource(R.string.settings_language_summary),
+                        style = MaterialTheme.typography.bodySmall,
                     )
                 }
             },
             trailingContent = {
                 Icon(
                     Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = null
+                    contentDescription = null,
                 )
             },
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { languageDialogVisible = true }
+            modifier = Modifier.fillMaxWidth().clickable { languageDialogVisible = true },
         )
     }
 
@@ -257,30 +329,30 @@ class SettingsActivity : ComponentActivity() {
         val selectedTag = AppLocaleManager.currentTag()
         AlertDialog(
             onDismissRequest = { languageDialogVisible = false },
-            title = { Text("Язык приложения") },
+            title = { Text(stringResource(R.string.language_dialog_title)) },
             text = {
                 LazyColumn {
                     item {
                         LanguageOption(
-                            title = "Как в системе",
+                            title = stringResource(R.string.language_follow_system),
                             selected = selectedTag == null,
-                            onClick = { selectLanguage(null) }
+                            onClick = { selectLanguage(null) },
                         )
                     }
                     items(AppLocaleManager.supportedLocales, key = { it.languageTag }) { locale ->
                         LanguageOption(
                             title = locale.nativeName,
                             selected = selectedTag == locale.languageTag,
-                            onClick = { selectLanguage(locale.languageTag) }
+                            onClick = { selectLanguage(locale.languageTag) },
                         )
                     }
                 }
             },
             confirmButton = {
                 TextButton(onClick = { languageDialogVisible = false }) {
-                    Text("Отмена")
+                    Text(stringResource(R.string.cancel))
                 }
-            }
+            },
         )
     }
 
@@ -288,14 +360,12 @@ class SettingsActivity : ComponentActivity() {
     private fun LanguageOption(
         title: String,
         selected: Boolean,
-        onClick: () -> Unit
+        onClick: () -> Unit,
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onClick)
-                .padding(vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
+            modifier =
+                Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             RadioButton(selected = selected, onClick = onClick)
             Text(title, modifier = Modifier.padding(start = 8.dp))
