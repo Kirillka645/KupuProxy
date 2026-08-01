@@ -1,8 +1,8 @@
 package com.kupuproxy.app.ui
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -23,7 +23,7 @@ import com.kupuproxy.app.core.util.TelegramIntents
 import com.kupuproxy.app.ui.components.channel.AboutChannelSection
 import com.kupuproxy.app.ui.theme.KupuProxyTheme
 
-class AboutActivity : ComponentActivity() {
+class AboutActivity : AppCompatActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -37,22 +37,20 @@ class AboutActivity : ComponentActivity() {
                                 IconButton(onClick = { finish() }) {
                                     Icon(
                                         Icons.AutoMirrored.Filled.ArrowBack,
-                                        contentDescription = null
+                                        contentDescription = null,
                                     )
                                 }
-                            }
+                            },
                         )
                     }
                 ) { padding ->
                     Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(padding),
-                        contentAlignment = Alignment.TopCenter
+                        modifier = Modifier.fillMaxSize().padding(padding),
+                        contentAlignment = Alignment.TopCenter,
                     ) {
                         AboutChannelSection(
                             cardModifier = Modifier.padding(24.dp),
-                            onOpen = { TelegramIntents.openTelegramChannel(this@AboutActivity) }
+                            onOpen = { TelegramIntents.openTelegramChannel(this@AboutActivity) },
                         )
                     }
                 }

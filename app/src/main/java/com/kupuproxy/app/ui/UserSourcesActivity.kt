@@ -2,8 +2,8 @@ package com.kupuproxy.app.ui
 
 import android.os.Bundle
 import android.widget.Toast
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -35,14 +35,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.kupuproxy.app.R
 import com.kupuproxy.app.data.local.db.SourceEntity
 import com.kupuproxy.app.data.source.UserCustomSourceStore
 import com.kupuproxy.app.ui.theme.KupuProxyTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
-class UserSourcesActivity : ComponentActivity() {
+class UserSourcesActivity : AppCompatActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -62,33 +64,29 @@ class UserSourcesActivity : ComponentActivity() {
                 Scaffold(
                     topBar = {
                         TopAppBar(
-                            title = { Text("Мои источники") },
+                            title = { Text(stringResource(R.string.custom_sources_title)) },
                             navigationIcon = {
                                 IconButton(onClick = { finish() }) {
                                     Icon(
                                         Icons.AutoMirrored.Filled.ArrowBack,
-                                        contentDescription = null
+                                        contentDescription = stringResource(R.string.back),
                                     )
                                 }
-                            }
+                            },
                         )
                     },
                     floatingActionButton = {
                         FloatingActionButton(onClick = { showAdd = true }) {
                             Icon(Icons.Default.Add, contentDescription = null)
                         }
-                    }
+                    },
                 ) { padding ->
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(padding)
-                    ) {
+                    LazyColumn(modifier = Modifier.fillMaxSize().padding(padding)) {
                         if (items.isEmpty()) {
                             item {
                                 Text(
-                                    "Добавьте URL списка прокси (txt/json). Работают без Telegram и участвуют в мега-скане.",
-                                    modifier = Modifier.padding(16.dp)
+                                    stringResource(R.string.custom_sources_empty),
+                                    modifier = Modifier.padding(16.dp),
                                 )
                             }
                         }
@@ -97,16 +95,21 @@ class UserSourcesActivity : ComponentActivity() {
                                 headlineContent = { Text(s.name) },
                                 supportingContent = { Text(s.url) },
                                 trailingContent = {
-                                    IconButton(onClick = {
-                                        scope.launch {
-                                            store.delete(s.id)
-                                            items = store.list()
+                                    IconButton(
+                                        onClick = {
+                                            scope.launch {
+                                                store.delete(s.id)
+                                                items = store.list()
+                                            }
                                         }
-                                    }) {
-                                        Icon(Icons.Default.Delete, contentDescription = null)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Delete,
+                                            contentDescription = stringResource(R.string.delete),
+                                        )
                                     }
                                 },
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth(),
                             )
                         }
                     }
@@ -115,52 +118,64 @@ class UserSourcesActivity : ComponentActivity() {
                 if (showAdd) {
                     AlertDialog(
                         onDismissRequest = { showAdd = false },
-                        title = { Text("Новый источник") },
+                        title = { Text(stringResource(R.string.custom_source_new)) },
                         text = {
                             Column {
                                 OutlinedTextField(
                                     value = name,
                                     onValueChange = { name = it },
-                                    label = { Text("Имя") },
-                                    modifier = Modifier.fillMaxWidth()
+                                    label = { Text(stringResource(R.string.custom_source_name)) },
+                                    modifier = Modifier.fillMaxWidth(),
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
                                 OutlinedTextField(
                                     value = url,
                                     onValueChange = { url = it },
                                     label = { Text("URL") },
-                                    modifier = Modifier.fillMaxWidth()
+                                    modifier = Modifier.fillMaxWidth(),
                                 )
                             }
                         },
                         confirmButton = {
-                            Button(onClick = {
-                                if (url.isBlank()) {
-                                    Toast.makeText(this@UserSourcesActivity, "URL пуст", Toast.LENGTH_SHORT).show()
-                                    return@Button
-                                }
-                                scope.launch {
-                                    try {
-                                        store.add(name, url)
-                                        items = store.list()
-                                        showAdd = false
-                                        name = ""
-                                        url = ""
-                                    } catch (cancelled: CancellationException) {
-                                        throw cancelled
-                                    } catch (error: Exception) {
+                            Button(
+                                onClick = {
+                                    if (url.isBlank()) {
                                         Toast.makeText(
-                                            this@UserSourcesActivity,
-                                            error.message ?: "Не удалось добавить источник",
-                                            Toast.LENGTH_LONG
-                                        ).show()
+                                                this@UserSourcesActivity,
+                                                R.string.custom_source_url_empty,
+                                                Toast.LENGTH_SHORT,
+                                            )
+                                            .show()
+                                        return@Button
+                                    }
+                                    scope.launch {
+                                        try {
+                                            store.add(name, url)
+                                            items = store.list()
+                                            showAdd = false
+                                            name = ""
+                                            url = ""
+                                        } catch (cancelled: CancellationException) {
+                                            throw cancelled
+                                        } catch (_: Exception) {
+                                            Toast.makeText(
+                                                    this@UserSourcesActivity,
+                                                    getString(R.string.custom_source_add_failed),
+                                                    Toast.LENGTH_LONG,
+                                                )
+                                                .show()
+                                        }
                                     }
                                 }
-                            }) { Text("Сохранить") }
+                            ) {
+                                Text(stringResource(R.string.save))
+                            }
                         },
                         dismissButton = {
-                            TextButton(onClick = { showAdd = false }) { Text("Отмена") }
-                        }
+                            TextButton(onClick = { showAdd = false }) {
+                                Text(stringResource(R.string.cancel))
+                            }
+                        },
                     )
                 }
             }

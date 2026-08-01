@@ -2,8 +2,8 @@ package com.kupuproxy.app.ui
 
 import android.os.Build
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -51,7 +51,7 @@ import com.kupuproxy.app.ui.theme.KupuProxyTheme
 import com.kupuproxy.app.ui.theme.ThemeMode
 import com.kupuproxy.app.ui.theme.normalizeHexColor
 
-class AppearanceActivity : ComponentActivity() {
+class AppearanceActivity : AppCompatActivity() {
     private var settings by mutableStateOf(AppearanceSettings())
     private var customDialogVisible by mutableStateOf(false)
 

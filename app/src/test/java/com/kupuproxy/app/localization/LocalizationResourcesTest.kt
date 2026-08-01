@@ -23,6 +23,17 @@ class LocalizationResourcesTest {
     }
 
     @Test
+    fun defaultEnglishCatalogContainsNoCyrillic() {
+        val catalog = readStrings(File(resDir, "values/strings.xml"))
+        val cyrillic = Regex("[А-Яа-яЁё]")
+        val offending = catalog.filterValues { cyrillic.containsMatchIn(it) }
+        Assert.assertTrue(
+            "Cyrillic leaked into English resources: ${offending.keys}",
+            offending.isEmpty(),
+        )
+    }
+
+    @Test
     fun allLocalesHaveDirectories() {
         val default = readStrings(File(resDir, "values/strings.xml"))
         Assert.assertTrue("Default catalog must not be empty", default.isNotEmpty())
@@ -44,6 +55,30 @@ class LocalizationResourcesTest {
         val configTags = parseConfig()
         val expected = AppLocaleManager.supportedLocales.map(AppLocale::languageTag)
         Assert.assertEquals("Registry and config mismatch", expected, configTags)
+    }
+
+    @Test
+    fun primaryComposeScreensHaveNoHardcodedCyrillicUiText() {
+        val sourceRoot = File(projectDir, "app/src/main/java/com/kupuproxy/app")
+        val files =
+            listOf(
+                "MainActivity.kt",
+                "ProxyLoadingActivity.kt",
+                "ProxyListActivity.kt",
+                "MergeProxiesActivity.kt",
+                "CheckFileActivity.kt",
+                "ui/SettingsActivity.kt",
+                "ui/UserSourcesActivity.kt",
+                "ui/components/ProxyUiComponents.kt",
+            )
+        val hardcodedCyrillic = Regex("\\\"[^\\\"\\n]*[А-Яа-яЁё][^\\\"\\n]*\\\"")
+        files.forEach { relativePath ->
+            val source = File(sourceRoot, relativePath).readText()
+            Assert.assertFalse(
+                "Hardcoded UI text in $relativePath: ${hardcodedCyrillic.find(source)?.value}",
+                hardcodedCyrillic.containsMatchIn(source),
+            )
+        }
     }
 
     private fun parseConfig(): List<String> {

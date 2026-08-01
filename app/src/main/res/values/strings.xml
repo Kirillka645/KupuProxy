@@ -21,6 +21,7 @@
     <string name="stop">Stop</string>
     <string name="retry">Retry</string>
     <string name="save">Save</string>
+    <string name="delete">Delete</string>
     <string name="copy">Copy</string>
     <string name="share">Share</string>
     <string name="filter">Filter</string>
@@ -111,6 +112,7 @@
     <string name="profile_current_wifi">Now: Wi-Fi</string>
     <string name="profile_current_mobile">Now: LTE / mobile</string>
     <string name="profile_limits">Up to %1$d addresses · %2$d workers · target %3$d</string>
+    <string name="profile_limits_all">Up to %1$d addresses · %2$d workers · scans the complete list</string>
     <string name="home_starting">Starting: %1$s</string>
     <string name="home_empty_saved">The list is empty — run a check first</string>
     <string name="home_empty_favorites">Favorites are empty</string>

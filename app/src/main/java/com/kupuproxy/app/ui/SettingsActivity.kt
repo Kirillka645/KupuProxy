@@ -2,8 +2,8 @@ package com.kupuproxy.app.ui
 
 import android.content.Intent
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -50,7 +50,7 @@ import com.kupuproxy.app.ui.theme.KupuProxyTheme
 import com.kupuproxy.app.work.ProxyRefreshPreferences
 import com.kupuproxy.app.work.UpdatePreferences
 
-class SettingsActivity : ComponentActivity() {
+class SettingsActivity : AppCompatActivity() {
     private var refreshSettings by mutableStateOf(ProxyRefreshPreferences.Settings())
     private var languageDialogVisible by mutableStateOf(false)
     private var autoUpdateEnabled by mutableStateOf(true)
@@ -118,10 +118,12 @@ class SettingsActivity : ComponentActivity() {
                         )
                         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                         ListItem(
-                            headlineContent = { Text("Мои источники прокси") },
+                            headlineContent = {
+                                Text(stringResource(R.string.settings_custom_sources))
+                            },
                             supportingContent = {
                                 Text(
-                                    "Свои URL (txt/json) для мега-скана — работают без Telegram",
+                                    stringResource(R.string.settings_custom_sources_summary),
                                     style = MaterialTheme.typography.bodySmall,
                                 )
                             },
@@ -143,9 +145,11 @@ class SettingsActivity : ComponentActivity() {
                         )
                         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                         ListItem(
-                            headlineContent = { Text("Автообновление прокси") },
+                            headlineContent = {
+                                Text(stringResource(R.string.settings_proxy_refresh))
+                            },
                             supportingContent = {
-                                Text("Verified collector и основные GitHub-источники")
+                                Text(stringResource(R.string.settings_proxy_refresh_summary))
                             },
                             trailingContent = {
                                 Switch(
@@ -157,7 +161,7 @@ class SettingsActivity : ComponentActivity() {
                             },
                         )
                         Text(
-                            "Интервал",
+                            stringResource(R.string.settings_interval),
                             style = MaterialTheme.typography.labelLarge,
                             modifier = Modifier.padding(horizontal = 16.dp),
                         )
@@ -170,17 +174,23 @@ class SettingsActivity : ComponentActivity() {
                                     onClick = { saveRefresh(refreshSettings.copy(hours = hours)) },
                                     label = {
                                         Text(
-                                            if (refreshSettings.hours == hours) "✓ ${hours}ч"
-                                            else "${hours}ч"
+                                            stringResource(
+                                                if (refreshSettings.hours == hours)
+                                                    R.string.settings_hours_selected
+                                                else R.string.settings_hours,
+                                                hours,
+                                            )
                                         )
                                     },
                                 )
                             }
                         }
                         ListItem(
-                            headlineContent = { Text("Только безлимитная сеть") },
+                            headlineContent = {
+                                Text(stringResource(R.string.settings_unmetered_only))
+                            },
                             supportingContent = {
-                                Text("Обычно Wi-Fi; Android определяет сеть как unmetered")
+                                Text(stringResource(R.string.settings_unmetered_summary))
                             },
                             trailingContent = {
                                 Switch(
@@ -192,11 +202,11 @@ class SettingsActivity : ComponentActivity() {
                             },
                         )
                         ListItem(
-                            headlineContent = { Text("Источник Kort Verified") },
+                            headlineContent = {
+                                Text(stringResource(R.string.settings_kort_source))
+                            },
                             supportingContent = {
-                                Text(
-                                    "Публичные generated feeds kort0881/telegram-proxy-collector. KupuProxy независимо проверяет MTProto handshake."
-                                )
+                                Text(stringResource(R.string.settings_kort_source_summary))
                             },
                             modifier =
                                 Modifier.clickable {
@@ -235,10 +245,12 @@ class SettingsActivity : ComponentActivity() {
                             },
                         )
                         ListItem(
-                            headlineContent = { Text("Проверить обновления приложения") },
+                            headlineContent = {
+                                Text(stringResource(R.string.settings_check_updates))
+                            },
                             supportingContent = {
                                 Text(
-                                    "Проверить GitHub Releases и безопасно установить подписанный APK",
+                                    stringResource(R.string.settings_check_updates_summary),
                                     style = MaterialTheme.typography.bodySmall,
                                 )
                             },
@@ -270,8 +282,7 @@ class SettingsActivity : ComponentActivity() {
                             modifier = Modifier.padding(16.dp),
                         )
                         Text(
-                            text =
-                                "Если Telegram недоступен: мега-скан берёт GitHub/CDN и зеркала каналов (Jina, RSSHub), не только t.me.",
+                            text = stringResource(R.string.settings_bypass_hint),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
@@ -289,14 +300,14 @@ class SettingsActivity : ComponentActivity() {
         val selectedName =
             AppLocaleManager.supportedLocales
                 .firstOrNull { it.languageTag == selectedTag }
-                ?.nativeName ?: "Как в системе"
+                ?.nativeName ?: stringResource(R.string.language_follow_system)
         ListItem(
-            headlineContent = { Text("Язык приложения") },
+            headlineContent = { Text(stringResource(R.string.settings_language)) },
             supportingContent = {
                 Column {
                     Text(selectedName)
                     Text(
-                        "Выберите язык интерфейса KupuProxy",
+                        stringResource(R.string.settings_language_summary),
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
@@ -316,12 +327,12 @@ class SettingsActivity : ComponentActivity() {
         val selectedTag = AppLocaleManager.currentTag()
         AlertDialog(
             onDismissRequest = { languageDialogVisible = false },
-            title = { Text("Язык приложения") },
+            title = { Text(stringResource(R.string.language_dialog_title)) },
             text = {
                 LazyColumn {
                     item {
                         LanguageOption(
-                            title = "Как в системе",
+                            title = stringResource(R.string.language_follow_system),
                             selected = selectedTag == null,
                             onClick = { selectLanguage(null) },
                         )
@@ -337,7 +348,7 @@ class SettingsActivity : ComponentActivity() {
             },
             confirmButton = {
                 TextButton(onClick = { languageDialogVisible = false }) {
-                    Text("Отмена")
+                    Text(stringResource(R.string.cancel))
                 }
             },
         )

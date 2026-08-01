@@ -21,6 +21,7 @@
     <string name="stop">Остановить</string>
     <string name="retry">Повторить</string>
     <string name="save">Сохранить</string>
+    <string name="delete">Удалить</string>
     <string name="copy">Копировать</string>
     <string name="share">Поделиться</string>
     <string name="filter">Фильтр</string>
@@ -111,6 +112,7 @@
     <string name="profile_current_wifi">Сейчас: Wi-Fi</string>
     <string name="profile_current_mobile">Сейчас: LTE / мобильный</string>
     <string name="profile_limits">До %1$d адресов · %2$d потоков · цель %3$d</string>
+    <string name="profile_limits_all">До %1$d адресов · %2$d потоков · проверяется весь список</string>
     <string name="home_starting">Запуск: %1$s</string>
     <string name="home_empty_saved">Список пуст — сначала запустите проверку</string>
     <string name="home_empty_favorites">Избранное пусто</string>

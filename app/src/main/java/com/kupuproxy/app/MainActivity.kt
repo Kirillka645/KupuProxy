@@ -66,6 +66,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -100,9 +101,8 @@ class MainActivity : AppCompatActivity() {
     private var networkLabel by mutableStateOf("")
     private var counts by mutableStateOf(HomeCounts())
     private var kortStatus by mutableStateOf(ProxyCache.KortStatus())
-    private var statusText by mutableStateOf("Готов к поиску прокси")
+    private var statusText by mutableStateOf("")
     private var promoDismissed by mutableStateOf<Boolean?>(null)
-    private var themeDialogVisible by mutableStateOf(false)
     private var helpDialogVisible by mutableStateOf(false)
     private var updateRelease by mutableStateOf<GitHubRelease?>(null)
     private var updateCheckInProgress by mutableStateOf(false)
@@ -122,6 +122,7 @@ class MainActivity : AppCompatActivity() {
         applySavedTheme()
         AppLocaleManager.apply(AppLocaleManager.currentTag())
         super.onCreate(savedInstanceState)
+        statusText = getString(R.string.home_ready)
         updateChecker = UpdateChecker(this, client)
         apkDownloader = ApkDownloader(this)
         promoPreferences = PromoPreferences(this)
@@ -149,7 +150,10 @@ class MainActivity : AppCompatActivity() {
             if (apkDownloader.canInstallPackages() && apkDownloader.isVerifiedUpdateFile(file)) {
                 pendingUpdateFile = null
                 runCatching { apkDownloader.installApk(this, file) }
-                    .onFailure { downloadError = it.message ?: "Ошибка запуска установщика" }
+                    .onFailure {
+                        downloadError =
+                            it.message ?: getString(R.string.update_installer_launch_error)
+                    }
             }
         }
     }
@@ -158,6 +162,7 @@ class MainActivity : AppCompatActivity() {
     @Composable
     private fun HomeScreen() {
         val profileSettings = ProfileSettings.forMode(selectedProfile, this)
+        val localizedHomeSources = homeSources()
         Scaffold(
             topBar = {
                 TopAppBar(
@@ -165,7 +170,11 @@ class MainActivity : AppCompatActivity() {
                         Column {
                             Text("KupuProxy", fontWeight = FontWeight.Bold)
                             Text(
-                                "v${BuildConfig.VERSION_NAME} · $networkLabel",
+                                stringResource(
+                                    R.string.home_version_network,
+                                    BuildConfig.VERSION_NAME,
+                                    networkLabel,
+                                ),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
@@ -177,7 +186,7 @@ class MainActivity : AppCompatActivity() {
                         IconButton(onClick = { helpDialogVisible = true }) {
                             Icon(
                                 Icons.AutoMirrored.Filled.HelpOutline,
-                                contentDescription = "Справка",
+                                contentDescription = stringResource(R.string.help),
                             )
                         }
                         IconButton(
@@ -187,7 +196,10 @@ class MainActivity : AppCompatActivity() {
                                 )
                             }
                         ) {
-                            Icon(Icons.Default.DarkMode, contentDescription = "Тема")
+                            Icon(
+                                Icons.Default.DarkMode,
+                                contentDescription = stringResource(R.string.theme),
+                            )
                         }
                         IconButton(
                             onClick = {
@@ -196,7 +208,10 @@ class MainActivity : AppCompatActivity() {
                                 )
                             }
                         ) {
-                            Icon(Icons.Default.Settings, contentDescription = "Настройки")
+                            Icon(
+                                Icons.Default.Settings,
+                                contentDescription = stringResource(R.string.settings_title),
+                            )
                         }
                     },
                 )
@@ -211,7 +226,7 @@ class MainActivity : AppCompatActivity() {
                     HeroCard(
                         status = statusText,
                         profile = profileSettings.label,
-                        onScan = { startScan(MODE_MEGA, "Мега-скан") },
+                        onScan = { startScan(MODE_MEGA, getString(R.string.home_mega_scan)) },
                     )
                 }
                 item {
@@ -266,11 +281,11 @@ class MainActivity : AppCompatActivity() {
                 }
                 item {
                     SectionTitle(
-                        "Быстрый старт",
-                        "Выберите один источник или запустите полный сбор",
+                        stringResource(R.string.home_quick_start),
+                        stringResource(R.string.home_quick_start_subtitle),
                     )
                 }
-                items(homeSources, key = HomeSource::id) { source ->
+                items(localizedHomeSources, key = HomeSource::id) { source ->
                     ActionCard(
                         icon = source.icon,
                         title = source.title,
@@ -279,14 +294,19 @@ class MainActivity : AppCompatActivity() {
                     )
                 }
                 item {
-                    SectionTitle("Офлайн и сохранённое", "Результаты остаются доступны без сети")
+                    SectionTitle(
+                        stringResource(R.string.home_offline_saved),
+                        stringResource(R.string.home_offline_saved_subtitle),
+                    )
                 }
                 item {
                     ActionCard(
                         Icons.Default.Download,
-                        "Seed из APK",
-                        "${counts.seed} встроенных · кэш ${counts.cache}",
-                        onClick = { startScan(MODE_SEED, "Seed (офлайн APK)") },
+                        stringResource(R.string.home_seed_title),
+                        stringResource(R.string.home_seed_summary, counts.seed, counts.cache),
+                        onClick = {
+                            startScan(MODE_SEED, getString(R.string.home_seed_scan_title))
+                        },
                     )
                 }
                 item {
@@ -297,7 +317,10 @@ class MainActivity : AppCompatActivity() {
                             "Wi-Fi",
                             counts.wifi.toString(),
                         ) {
-                            openSavedList(NetworkProfileMode.WIFI, "Последние Wi-Fi")
+                            openSavedList(
+                                NetworkProfileMode.WIFI,
+                                getString(R.string.home_saved_wifi),
+                            )
                         }
                         CompactAction(
                             Modifier.weight(1f),
@@ -305,31 +328,43 @@ class MainActivity : AppCompatActivity() {
                             "LTE",
                             counts.mobile.toString(),
                         ) {
-                            openSavedList(NetworkProfileMode.MOBILE, "Последние LTE")
+                            openSavedList(
+                                NetworkProfileMode.MOBILE,
+                                getString(R.string.home_saved_mobile),
+                            )
                         }
                         CompactAction(
                             Modifier.weight(1f),
                             Icons.Default.Star,
-                            "Избранное",
+                            stringResource(R.string.home_favorites),
                             counts.favorites.toString(),
                         ) {
                             openFavorites()
                         }
                     }
                 }
-                item { SectionTitle("Инструменты", "Импорт, объединение и экспорт списков") }
+                item {
+                    SectionTitle(
+                        stringResource(R.string.home_tools),
+                        stringResource(R.string.home_tools_subtitle),
+                    )
+                }
                 item {
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         ToolButton(
                             Modifier.weight(1f),
                             Icons.AutoMirrored.Filled.MergeType,
-                            "Собрать файл",
+                            stringResource(R.string.home_build_file),
                         ) {
                             startActivity(
                                 Intent(this@MainActivity, MergeProxiesActivity::class.java)
                             )
                         }
-                        ToolButton(Modifier.weight(1f), Icons.Default.FileOpen, "Проверить файл") {
+                        ToolButton(
+                            Modifier.weight(1f),
+                            Icons.Default.FileOpen,
+                            stringResource(R.string.home_check_file),
+                        ) {
                             filePickerLauncher.launch(arrayOf("text/plain", "text/*", "*/*"))
                         }
                     }
@@ -342,7 +377,7 @@ class MainActivity : AppCompatActivity() {
                         ) {
                             Icon(Icons.Default.Public, contentDescription = null)
                             Spacer(Modifier.size(8.dp))
-                            Text("GitHub")
+                            Text(stringResource(R.string.github))
                         }
                         OutlinedButton(
                             onClick = {
@@ -352,7 +387,7 @@ class MainActivity : AppCompatActivity() {
                         ) {
                             Icon(Icons.Default.Info, contentDescription = null)
                             Spacer(Modifier.size(8.dp))
-                            Text("О приложении")
+                            Text(stringResource(R.string.about))
                         }
                     }
                 }
@@ -360,14 +395,13 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        if (themeDialogVisible) ThemeDialog()
         if (helpDialogVisible) HelpDialog()
         updateRelease?.let { UpdateDialog(it) }
         if (updateCheckInProgress) UpdateCheckDialog()
         updateCheckError?.let { error ->
             AlertDialog(
                 onDismissRequest = { updateCheckError = null },
-                title = { Text("Не удалось проверить обновление") },
+                title = { Text(stringResource(R.string.update_check_failed_title)) },
                 text = { Text(error) },
                 confirmButton = {
                     TextButton(
@@ -376,11 +410,13 @@ class MainActivity : AppCompatActivity() {
                             checkForUpdates(showResult = true)
                         }
                     ) {
-                        Text("Повторить")
+                        Text(stringResource(R.string.retry))
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = { updateCheckError = null }) { Text("Закрыть") }
+                    TextButton(onClick = { updateCheckError = null }) {
+                        Text(stringResource(R.string.close))
+                    }
                 },
             )
         }
@@ -388,7 +424,7 @@ class MainActivity : AppCompatActivity() {
         downloadError?.let { error ->
             AlertDialog(
                 onDismissRequest = { downloadError = null },
-                title = { Text("Не удалось обновить") },
+                title = { Text(stringResource(R.string.update_download_failed_title)) },
                 text = { Text(error) },
                 confirmButton = {
                     TextButton(
@@ -397,11 +433,13 @@ class MainActivity : AppCompatActivity() {
                             updateRelease?.let(::startApkDownloadAndInstall)
                         }
                     ) {
-                        Text("Повторить")
+                        Text(stringResource(R.string.retry))
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = { downloadError = null }) { Text("Закрыть") }
+                    TextButton(onClick = { downloadError = null }) {
+                        Text(stringResource(R.string.close))
+                    }
                 },
             )
         }
@@ -431,13 +469,14 @@ class MainActivity : AppCompatActivity() {
                     Spacer(Modifier.size(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
-                            "Рабочие MTProto-прокси",
+                            stringResource(R.string.home_proxy_title),
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                         )
                         Text(
                             status,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f),
+                            color =
+                                MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f),
                         )
                     }
                 }
@@ -458,7 +497,10 @@ class MainActivity : AppCompatActivity() {
                 Button(onClick = onScan, modifier = Modifier.fillMaxWidth().height(52.dp)) {
                     Icon(Icons.Default.Search, contentDescription = null)
                     Spacer(Modifier.size(8.dp))
-                    Text("Запустить мега-скан", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        stringResource(R.string.home_start_scan),
+                        fontWeight = FontWeight.SemiBold,
+                    )
                 }
             }
         }
@@ -468,14 +510,14 @@ class MainActivity : AppCompatActivity() {
     @Composable
     private fun KortCollectorCard(status: ProxyCache.KortStatus) {
         val age =
-            if (status.refreshedAtMs <= 0) "ещё не обновлялся"
+            if (status.refreshedAtMs <= 0) stringResource(R.string.kort_never_updated)
             else {
                 val minutes =
                     ((System.currentTimeMillis() - status.refreshedAtMs).coerceAtLeast(0) / 60_000)
                 when {
-                    minutes < 60 -> "$minutes мин назад"
-                    minutes < 1_440 -> "${minutes / 60} ч назад"
-                    else -> "${minutes / 1_440} дн назад"
+                    minutes < 60 -> stringResource(R.string.kort_minutes_ago, minutes)
+                    minutes < 1_440 -> stringResource(R.string.kort_hours_ago, minutes / 60)
+                    else -> stringResource(R.string.kort_days_ago, minutes / 1_440)
                 }
             }
         Card(shape = MaterialTheme.shapes.large) {
@@ -493,7 +535,12 @@ class MainActivity : AppCompatActivity() {
                     Column(Modifier.weight(1f)) {
                         Text("Kort Verified Collector", fontWeight = FontWeight.Bold)
                         Text(
-                            "${if (status.isStale()) "Данные устарели" else "Обновлено $age"} · ${status.proxyCount} MTProto",
+                            stringResource(
+                                R.string.kort_status,
+                                if (status.isStale()) stringResource(R.string.kort_stale)
+                                else stringResource(R.string.kort_updated, age),
+                                status.proxyCount,
+                            ),
                             style = MaterialTheme.typography.bodySmall,
                             color =
                                 if (status.isStale()) MaterialTheme.colorScheme.error
@@ -503,18 +550,18 @@ class MainActivity : AppCompatActivity() {
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf(
-                            "Все" to "kort_verified",
-                            "RU" to "kort_ru",
-                            "EU" to "kort_eu",
-                            "US" to "kort_us",
-                            "Asia" to "kort_asia",
+                            Triple(stringResource(R.string.kort_all), "kort_verified", "all"),
+                            Triple("RU", "kort_ru", "ru"),
+                            Triple("EU", "kort_eu", "eu"),
+                            Triple("US", "kort_us", "us"),
+                            Triple(stringResource(R.string.kort_asia), "kort_asia", "asia"),
                         )
-                        .forEach { (label, id) ->
+                        .forEach { (label, id, regionKey) ->
                             AssistChip(
                                 onClick = { startScan(MODE_SOURCE, "Kort $label", id) },
                                 label = {
                                     Text(
-                                        "$label ${status.regionalCounts[label.lowercase()].orEmptyCount(label, status)}"
+                                        "$label ${status.regionalCounts[regionKey].orEmptyCount(id == "kort_verified", status)}"
                                     )
                                 },
                             )
@@ -531,8 +578,8 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun Int?.orEmptyCount(label: String, status: ProxyCache.KortStatus): String {
-        if (label == "Все") return status.proxyCount.takeIf { it > 0 }?.toString().orEmpty()
+    private fun Int?.orEmptyCount(isAll: Boolean, status: ProxyCache.KortStatus): String {
+        if (isAll) return status.proxyCount.takeIf { it > 0 }?.toString().orEmpty()
         return this?.takeIf { it > 0 }?.toString().orEmpty()
     }
 
@@ -543,16 +590,16 @@ class MainActivity : AppCompatActivity() {
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
-                "Профиль сети",
+                stringResource(R.string.home_profile_title),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
             )
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                 val profiles =
                     listOf(
-                        NetworkProfileMode.AUTO to "Авто",
-                        NetworkProfileMode.WIFI to "Wi-Fi",
-                        NetworkProfileMode.MOBILE to "LTE",
+                        NetworkProfileMode.AUTO to stringResource(R.string.profile_auto),
+                        NetworkProfileMode.WIFI to stringResource(R.string.profile_wifi),
+                        NetworkProfileMode.MOBILE to stringResource(R.string.profile_mobile),
                     )
                 profiles.forEachIndexed { index, (mode, label) ->
                     SegmentedButton(
@@ -565,7 +612,11 @@ class MainActivity : AppCompatActivity() {
             }
             val settings = ProfileSettings.forMode(selected, this@MainActivity)
             Text(
-                "До ${settings.maxToCheck} адресов · ${settings.batchSize} потоков · цель ${settings.stopWhenFound}",
+                stringResource(
+                    R.string.profile_limits_all,
+                    settings.maxToCheck,
+                    settings.batchSize,
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -664,23 +715,21 @@ class MainActivity : AppCompatActivity() {
         AlertDialog(
             onDismissRequest = { helpDialogVisible = false },
             icon = { Icon(Icons.AutoMirrored.Filled.HelpOutline, contentDescription = null) },
-            title = { Text("Как работает KupuProxy") },
+            title = { Text(stringResource(R.string.help_dialog_title)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("• Собирает списки из GitHub, CDN, зеркал и ваших HTTPS-источников.")
-                    Text("• Проверяет настоящий MTProto handshake, а не только открытый TCP-порт.")
-                    Text(
-                        "• Профили Wi-Fi/LTE управляют параллелизмом, таймаутами и расходом батареи."
-                    )
-                    Text("• Рабочие прокси, избранное, seed и кэш доступны офлайн.")
+                    Text(stringResource(R.string.help_step_sources))
+                    Text(stringResource(R.string.help_step_handshake))
+                    Text(stringResource(R.string.help_step_profiles))
+                    Text(stringResource(R.string.help_step_offline))
                     HorizontalDivider()
-                    Text(
-                        "Результат может отличаться от Telegram из-за DPI и блокировок конкретного клиента."
-                    )
+                    Text(stringResource(R.string.help_client_difference))
                 }
             },
             confirmButton = {
-                TextButton(onClick = { helpDialogVisible = false }) { Text("Понятно") }
+                TextButton(onClick = { helpDialogVisible = false }) {
+                    Text(stringResource(R.string.understood))
+                }
             },
             dismissButton = {
                 TextButton(
@@ -689,53 +738,16 @@ class MainActivity : AppCompatActivity() {
                         TelegramIntents.openTelegramChannel(this)
                     }
                 ) {
-                    Text("Канал")
+                    Text(stringResource(R.string.channel))
                 }
             },
-        )
-    }
-
-    @Composable
-    private fun ThemeDialog() {
-        val current = getPrefs().getInt(KEY_THEME, 0)
-        val themes = listOf("Системная", "Светлая", "Тёмная")
-        AlertDialog(
-            onDismissRequest = { themeDialogVisible = false },
-            title = { Text("Тема оформления") },
-            text = {
-                Column {
-                    themes.forEachIndexed { index, title ->
-                        TextButton(
-                            onClick = {
-                                getPrefs().edit().putInt(KEY_THEME, index).apply()
-                                AppCompatDelegate.setDefaultNightMode(
-                                    when (index) {
-                                        1 -> AppCompatDelegate.MODE_NIGHT_NO
-                                        2 -> AppCompatDelegate.MODE_NIGHT_YES
-                                        else -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
-                                    }
-                                )
-                                themeDialogVisible = false
-                                recreate()
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text(
-                                if (index == current) "✓ $title" else title,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        }
-                    }
-                }
-            },
-            confirmButton = {},
         )
     }
 
     private fun openUrl(url: String) {
         runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
             .onFailure {
-                Toast.makeText(this, "Не удалось открыть ссылку", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, R.string.link_open_failed, Toast.LENGTH_SHORT).show()
             }
     }
 
@@ -756,9 +768,9 @@ class MainActivity : AppCompatActivity() {
                 }
                 apkDownloader.installApk(this@MainActivity, file)
                 downloadProgress = -1
-            } catch (error: Exception) {
+            } catch (_: Exception) {
                 downloadProgress = -1
-                downloadError = error.message ?: "Ошибка загрузки"
+                downloadError = getString(R.string.update_download_error)
             }
         }
     }
@@ -768,9 +780,13 @@ class MainActivity : AppCompatActivity() {
         val hasApk = release.apkUrl.isNotBlank()
         AlertDialog(
             onDismissRequest = { updateRelease = null },
-            title = { Text("Обновление ${release.tagName}") },
+            title = { Text(stringResource(R.string.update_dialog_title, release.tagName)) },
             text = {
-                Text(release.changelog.ifBlank { "Доступна новая версия KupuProxy" }.take(1800))
+                Text(
+                    release.changelog
+                        .ifBlank { stringResource(R.string.update_available_default) }
+                        .take(1800)
+                )
             },
             confirmButton = {
                 TextButton(
@@ -782,10 +798,19 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                 ) {
-                    Text(if (hasApk) "Скачать и установить" else "Открыть GitHub")
+                    Text(
+                        stringResource(
+                            if (hasApk) R.string.update_download_install
+                            else R.string.update_open_github
+                        )
+                    )
                 }
             },
-            dismissButton = { TextButton(onClick = { updateRelease = null }) { Text("Позже") } },
+            dismissButton = {
+                TextButton(onClick = { updateRelease = null }) {
+                    Text(stringResource(R.string.later))
+                }
+            },
         )
     }
 
@@ -793,12 +818,12 @@ class MainActivity : AppCompatActivity() {
     private fun UpdateCheckDialog() {
         AlertDialog(
             onDismissRequest = {},
-            title = { Text("Проверка обновления") },
+            title = { Text(stringResource(R.string.update_check_title)) },
             text = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 3.dp)
                     Spacer(Modifier.size(12.dp))
-                    Text("Получаю данные о последнем релизе…")
+                    Text(stringResource(R.string.update_check_message))
                 }
             },
             confirmButton = {},
@@ -809,7 +834,7 @@ class MainActivity : AppCompatActivity() {
     private fun DownloadDialog() {
         AlertDialog(
             onDismissRequest = {},
-            title = { Text("Проверенное обновление") },
+            title = { Text(stringResource(R.string.update_verified_title)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     if (downloadProgress in 0..99) {
@@ -817,12 +842,12 @@ class MainActivity : AppCompatActivity() {
                             progress = { downloadProgress / 100f },
                             modifier = Modifier.fillMaxWidth(),
                         )
-                        Text("Скачивание и проверка SHA-256… $downloadProgress%")
+                        Text(stringResource(R.string.update_download_progress, downloadProgress))
                     } else {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 3.dp)
                             Spacer(Modifier.size(12.dp))
-                            Text("Открываю установщик…")
+                            Text(stringResource(R.string.update_opening_installer))
                         }
                     }
                 }
@@ -870,7 +895,7 @@ class MainActivity : AppCompatActivity() {
         }
 
     private fun startScan(mode: String, title: String, sourceId: String = "") {
-        statusText = "Запуск: $title"
+        statusText = getString(R.string.home_starting, title)
         startActivity(
             Intent(this, ProxyLoadingActivity::class.java).apply {
                 putExtra(EXTRA_MODE, mode)
@@ -884,8 +909,7 @@ class MainActivity : AppCompatActivity() {
     private fun openSavedList(profile: NetworkProfileMode, title: String) {
         val list = ProxyCache.loadWorking(this, profile)
         if (list.isEmpty()) {
-            Toast.makeText(this, "Список пуст — сначала запустите проверку", Toast.LENGTH_SHORT)
-                .show()
+            Toast.makeText(this, R.string.home_empty_saved, Toast.LENGTH_SHORT).show()
             return
         }
         startActivity(
@@ -899,13 +923,18 @@ class MainActivity : AppCompatActivity() {
     private fun openFavorites() {
         val urls = ProxyCache.getFavorites(this).toList()
         if (urls.isEmpty()) {
-            Toast.makeText(this, "Избранное пусто", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, R.string.home_empty_favorites, Toast.LENGTH_SHORT).show()
             return
         }
         startActivity(
             Intent(this, ProxyListActivity::class.java).apply {
-                putExtra(EXTRA_PROXIES, ArrayList(urls.map { ProxyWithPing(it, 0, "Избранное") }))
-                putExtra(EXTRA_SOURCE_NAME, "Избранное")
+                putExtra(
+                    EXTRA_PROXIES,
+                    ArrayList(
+                        urls.map { ProxyWithPing(it, 0, getString(R.string.home_favorites)) }
+                    ),
+                )
+                putExtra(EXTRA_SOURCE_NAME, getString(R.string.home_favorites))
             }
         )
     }
@@ -940,13 +969,14 @@ class MainActivity : AppCompatActivity() {
                         if (showResult)
                             Toast.makeText(
                                     this@MainActivity,
-                                    "Установлена последняя версия",
+                                    getString(R.string.update_latest_installed),
                                     Toast.LENGTH_SHORT,
                                 )
                                 .show()
                     }
                     is UpdateCheckResult.Failure -> {
-                        if (showResult) updateCheckError = result.message
+                        if (showResult)
+                            updateCheckError = getString(R.string.update_check_failed_title)
                     }
                 }
             } finally {
@@ -970,36 +1000,37 @@ class MainActivity : AppCompatActivity() {
         val icon: ImageVector,
     )
 
-    private val homeSources =
+    @Composable
+    private fun homeSources(): List<HomeSource> =
         listOf(
             HomeSource(
                 "solispirit",
                 "SoliSpirit Mega",
-                "Большой автообновляемый список",
+                stringResource(R.string.home_source_solispirit_summary),
                 Icons.Default.Public,
             ),
             HomeSource(
                 "shablin_valid",
                 "Shablin latency",
-                "Живые MTProto, отсортированные по задержке",
+                stringResource(R.string.home_source_shablin_summary),
                 Icons.Default.Speed,
             ),
             HomeSource(
                 "dubblebyte",
                 "Dubblebyte free MTProto",
-                "github.com/dubblebyte/free-mtproto-proxies",
+                stringResource(R.string.home_source_dubblebyte_summary),
                 Icons.Default.Public,
             ),
             HomeSource(
                 "surfboard",
                 "SurfboardV2ray",
-                "Основной и предварительно проверенный списки",
+                stringResource(R.string.home_source_surfboard_summary),
                 Icons.Default.Speed,
             ),
             HomeSource(
                 "argh94_scraper",
                 "Argh94 Scraper",
-                "Агрегация публичных каналов",
+                stringResource(R.string.home_source_argh94_summary),
                 Icons.Default.Search,
             ),
         )
