@@ -1,11 +1,11 @@
 {
-  "version": "1.3.3.9",
-  "tag_name": "v1.3.3.9",
-  "apk_name": "KupuProxy-v1.3.3.9.apk",
-  "apk_url": "https://github.com/Kirillka645/KupuProxy/releases/download/v1.3.3.9/KupuProxy-v1.3.3.9.apk",
-  "apk_size": 15977272,
-  "sha256": "3f8e7b8ddec9f572080120d62b231017082f8805b08fb8c01b1d7c4246a7e587",
-  "sha256_url": "https://github.com/Kirillka645/KupuProxy/releases/download/v1.3.3.9/KupuProxy-v1.3.3.9.apk.sha256",
-  "release_url": "https://github.com/Kirillka645/KupuProxy/releases/tag/v1.3.3.9",
-  "changelog": "Исправлена полная смена языка на всех основных экранах. Мега-скан проверяет до 15 000 уникальных прокси без ранней остановки. Добавлен личный дизайн. Интерфейс учитывает вырезы экрана, системную навигацию и клавиатуру, поэтому нижние кнопки остаются доступными."
+  "version": "1.4.0",
+  "tag_name": "v1.4.0",
+  "apk_name": "KupuProxy-v1.4.0.apk",
+  "apk_url": "https://github.com/Kirillka645/KupuProxy/releases/download/v1.4.0/KupuProxy-v1.4.0.apk",
+  "apk_size": 25196566,
+  "sha256": "6676facce83ebf4140b58bc9808c6afcf802a7295ebf1528ebe2653a0b692662",
+  "sha256_url": "https://github.com/Kirillka645/KupuProxy/releases/download/v1.4.0/KupuProxy-v1.4.0.apk.sha256",
+  "release_url": "https://github.com/Kirillka645/KupuProxy/releases/tag/v1.4.0",
+  "changelog": "Добавлены режимы сканирования, история надёжности, статистика источников, мониторинг избранного, QR-импорт и экспорт, настройка главного экрана и обновлённый дизайн. Ускорены получение источников и параллельная MTProto-проверка."
 }
