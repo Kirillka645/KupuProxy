@@ -254,10 +254,17 @@ class ProxyLoadingActivity : AppCompatActivity() {
     }
 
     private fun startLoading() {
-        val settings = ProfileSettings.forMode(profileMode, this)
+        val settings =
+            ScanPreferences.apply(
+                ProfileSettings.forMode(profileMode, this),
+                ScanPreferences.load(this),
+            )
         scanJob =
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
+                    val observations =
+                        java.util.Collections.synchronizedList(mutableListOf<ProxyObservation>())
+                    var sourceHits: Map<String, Int> = emptyMap()
                     updateState(
                         message = getString(R.string.scan_profile, settings.label),
                         phase = getString(R.string.scan_collecting),
@@ -277,6 +284,7 @@ class ProxyLoadingActivity : AppCompatActivity() {
                                     message = getString(R.string.scan_loading_source, sourceName)
                                 )
                                 ProxyManager.fetchSourceById(sourceId, this@ProxyLoadingActivity)
+                                    .also { sourceHits = mapOf(sourceName to it.size) }
                             }
                             else -> {
                                 val result =
@@ -300,6 +308,7 @@ class ProxyLoadingActivity : AppCompatActivity() {
                                                 if (total > 0) index.toFloat() / total else 0f,
                                         )
                                     }
+                                sourceHits = result.sourceHits
                                 result.proxies
                             }
                         }
@@ -338,8 +347,10 @@ class ProxyLoadingActivity : AppCompatActivity() {
                                     progress = if (total > 0) processed.toFloat() / total else 0f,
                                 )
                             },
+                            onChecked = observations::add,
                             onFound = ::addLiveResult,
                         )
+                    InsightsStore.record(this@ProxyLoadingActivity, observations, sourceHits)
                     if (working.isNotEmpty()) {
                         val effective =
                             if (settings.mode == NetworkProfileMode.MOBILE)

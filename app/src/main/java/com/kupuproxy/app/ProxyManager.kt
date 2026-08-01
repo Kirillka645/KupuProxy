@@ -39,7 +39,7 @@ object ProxyManager {
 
     private const val MAX_PROXIES = MAX_SCAN_PROXIES
 
-    private val client: OkHttpClient = HttpSupport.defaultClient()
+    private val client: OkHttpClient = HttpSupport.fastClient()
 
     suspend fun fetchAllSources(
         context: Context? = null,
@@ -56,7 +56,13 @@ object ProxyManager {
             val done = AtomicInteger(0)
             val total = registry.size
             val aggregate =
-                ProxyAggregator(client).collect(registry) { result ->
+                ProxyAggregator(
+                        client = client,
+                        parallelism = 10,
+                        timeoutMs = 12_000L,
+                        maxAttempts = 1,
+                    )
+                    .collect(registry) { result ->
                     val count =
                         when (result) {
                             is SourceResult.Success -> result.entries.size
@@ -277,14 +283,15 @@ object ProxyManager {
         profileLabel: String = settings.label,
         onProgress: (processed: Int, total: Int, working: Int) -> Unit,
         onFound: (ProxyWithPing) -> Unit = {},
+        onChecked: (ProxyObservation) -> Unit = {},
     ): List<ProxyWithPing> =
         withContext(Dispatchers.IO) {
             if (proxies.isEmpty()) return@withContext emptyList()
 
             val total = proxies.size
-            val concurrency = settings.batchSize.coerceIn(16, 64).coerceAtMost(total)
-            val connectMs = settings.connectTimeoutMs.coerceIn(800, 2500)
-            val responseMs = (settings.connectTimeoutMs + 800).coerceIn(1200, 3500)
+            val concurrency = settings.batchSize.coerceIn(16, 96).coerceAtMost(total)
+            val connectMs = settings.connectTimeoutMs.coerceIn(700, 1800)
+            val responseMs = (settings.connectTimeoutMs + 600).coerceIn(1100, 2400)
             val stopAt = settings.stopWhenFound
             val cursor = AtomicInteger(0)
             val processed = AtomicInteger(0)
@@ -338,9 +345,18 @@ object ProxyManager {
                                 }
                                 val processedCount = processed.incrementAndGet()
                                 val workingCount = working.get()
-                                withContext(Dispatchers.Main) {
-                                    onProgress(processedCount, total, workingCount)
-                                    if (item != null) onFound(item)
+                                onChecked(
+                                    ProxyObservation(
+                                        url = proxyUrl,
+                                        ok = item != null,
+                                        pingMs = item?.pingMs ?: -1,
+                                    )
+                                )
+                                if (item != null || processedCount == total || processedCount % 8 == 0) {
+                                    withContext(Dispatchers.Main) {
+                                        onProgress(processedCount, total, workingCount)
+                                        if (item != null) onFound(item)
+                                    }
                                 }
                             }
                         }

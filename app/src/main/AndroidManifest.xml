@@ -86,6 +86,11 @@
             android:parentActivityName=".MainActivity"
             android:windowSoftInputMode="adjustResize" />
 
+        <activity android:name=".ui.ScanSettingsActivity" android:exported="false" android:parentActivityName=".ui.SettingsActivity" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".ui.InsightsActivity" android:exported="false" android:parentActivityName=".ui.SettingsActivity" />
+        <activity android:name=".ui.QrToolsActivity" android:exported="false" android:parentActivityName=".ui.SettingsActivity" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".ui.HomeLayoutActivity" android:exported="false" android:parentActivityName=".ui.SettingsActivity" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

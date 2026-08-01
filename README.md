@@ -1,85 +1,87 @@
 # KupuProxy
 
-Android-приложение для поиска и проверки **MTProto-прокси** Telegram.
+[![Android CI](https://github.com/Kirillka645/KupuProxy/actions/workflows/android.yml/badge.svg)](https://github.com/Kirillka645/KupuProxy/actions/workflows/android.yml)
+[![Latest release](https://img.shields.io/github/v/release/Kirillka645/KupuProxy)](https://github.com/Kirillka645/KupuProxy/releases/latest)
+[![Android](https://img.shields.io/badge/Android-7.0%2B-3DDC84?logo=android&logoColor=white)](https://github.com/Kirillka645/KupuProxy/releases)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**https://github.com/Kirillka645/KupuProxy**  
-**Канал:** https://t.me/KupuProxy
+KupuProxy — Android-приложение для поиска, проверки и подключения Telegram MTProto-прокси. Приложение собирает адреса из нескольких публичных источников и самостоятельно подтверждает их работоспособность через MTProto handshake.
 
-## Android + плагин exteraGram
+> Скачать APK: [GitHub Releases](https://github.com/Kirillka645/KupuProxy/releases/latest)
+>
+> Telegram-канал: [@KupuProxy](https://t.me/KupuProxy)
 
-| | |
-|--|--|
-| **Android app** | [Releases](https://github.com/Kirillka645/KupuProxy/releases) — APK |
-| **exteraGram plugin** | [`exteragram/kupu_proxy.plugin`](./exteragram/kupu_proxy.plugin) — [инструкция](./exteragram/README.md) |
+## Возможности 1.4.0
 
-Плагин: `.kupu scan` / `.kupu chat` / `.kupu auto` / `.kupu update` (в чат пишет только `.kupu chat`).
+- четыре режима проверки: быстрый, сбалансированный, полный и пользовательский;
+- полный скан до 15 000 уникальных адресов;
+- отдельные профили сети Auto, Wi-Fi и LTE;
+- параллельная проверка MTProto-прокси с живыми результатами;
+- история проверок, рейтинг надёжности и статистика источников;
+- фоновый контроль избранных прокси с уведомлениями;
+- создание QR-кода прокси и импорт QR из изображения;
+- настройка порядка и видимости источников на главном экране;
+- персональный дизайн: темы, палитры, HEX-цвета, скругления и размер текста;
+- локализация интерфейса и поддержка системного языка;
+- безопасные отступы для вырезов экрана, системных панелей и клавиатуры;
+- офлайн seed, локальный кэш, избранное и экспорт списков;
+- пользовательские HTTPS-источники с защитой от SSRF;
+- проверяемые обновления через GitHub Releases и SHA-256.
 
-## Возможности (v1.3.3.9)
+## Как пользоваться
 
-- **Выбор языка**: 20 языков + Follow system
-- **Личный дизайн**: режим темы, Dynamic Color, шесть палитр, свои HEX-цвета, скругления и размер текста с живым предпросмотром
-- Safe-area интерфейс: поддержка вырезов экрана, системной навигации и клавиатуры без перекрытия нижних кнопок
-- Фоновое обновление каждые 3/6/12/24 часа через WorkManager с выбором любой или только безлимитной сети
-- Внешняя проверка используется только для приоритета: итог всегда подтверждает собственный **MTProto handshake KupuProxy**
-- Полностью обновлённый интерфейс **Jetpack Compose + Material 3**
-- **Мега-скан** с единым параллельным агрегатором, retry и CDN-фолбэком
-- Полная проверка до **15 000 уникальных прокси** без прежнего ограничения 400 и без ранней остановки по числу найденных
-- **TG-bypass**: если `t.me` недоступен — каналы читаются через Jina reader, RSSHub, allorigins, telesco.pe
-- Ускоренный ограниченный **мультиформатный парсер**: tg://, t.me, JSON, host:port:secret, HTML, YAML, markdown, base64
-- Настоящая **MTProto-проверка** (handshake + req_pq / resPQ) с ограниченным пулом воркеров
-- **Профили Wi‑Fi / LTE**, ранняя остановка, live-результаты, seed offline, кэш и избранное
-- **Канал @KupuProxy** в UI + безопасные пользовательские HTTPS-источники с защитой от SSRF
-- **Room** + **WorkManager**, remote `sources_manifest.json`, MediaStore-экспорт в Downloads
-- Проверяемое обновление APK: доверенный GitHub Release, SHA-256, package/version и сертификат подписи; видимый статус, ручная проверка в настройках и retry
-- GitHub Actions: unit tests, lint и debug APK для каждого PR; отдельный workflow зеркалирует публичные фиды каждые 4 часа и коммитит только реальные изменения
+1. Установите APK из раздела [Releases](https://github.com/Kirillka645/KupuProxy/releases).
+2. Выберите профиль сети: Auto, Wi-Fi или LTE.
+3. Выберите глубину сканирования.
+4. Нажмите кнопку запуска сканирования.
+5. Подключите найденный прокси или добавьте его в избранное.
 
+Быстрый режим подходит для ежедневного использования. Полный режим проверяет весь собранный список и поэтому занимает больше времени.
 
-## Архитектура (app)
+## Безопасность и приватность
 
-```
-core/       Constants, FeatureFlags, TelegramIntents, QrEncoder
-domain/     models, ProxyParser, ProxySource, ProxyAggregator
-data/       sources, Room, DataStore promo prefs, export, remote HTTP
-ui/         Material 3 Compose theme, reusable proxy/channel components, Settings/About/Sources
-```
+- нет рекламных SDK, аналитики и трекеров;
+- подключение выполняется через установленный Telegram-клиент;
+- KupuProxy независимо перепроверяет полученные MTProto-прокси;
+- пользовательские источники принимаются только по HTTPS и проходят проверку URL;
+- APK обновления сверяется по версии, имени пакета, сертификату и SHA-256.
+
+Публичные прокси принадлежат сторонним операторам. Не используйте их для передачи чувствительной информации и не считайте прокси заменой сквозного шифрования.
 
 ## Источники
 
-- SoliSpirit/mtproto
-- [kort0881/telegram-proxy-collector](https://github.com/kort0881/telegram-proxy-collector): публичные generated feeds Verified + RU/EU/US/Asia. Это сторонние данные; KupuProxy не копирует код коллектора и независимо перепроверяет каждую прокси
-- [shablin/mtproto-proxy](https://github.com/shablin/mtproto-proxy): MIT, latency-sorted TXT/JSON; ALIILAPRO, hookzof и dubblebyte используются как дополнительные публичные фиды
-- Surfboardv2ray TGProto, Argh94 scraper, Grim1313
+В агрегатор входят публичные фиды SoliSpirit, shablin, Dubblebyte, SurfboardV2ray, Argh94 и другие источники из `sources_manifest.json`. Данные источников дедуплицируются, после чего приложение выполняет собственную проверку доступности.
 
-Workflow `.github/workflows/mirror-proxy-feeds.yml` каждые 4 часа сохраняет снимки в `proxy-feeds/`, проверяет JSON и размер ответов, строит дедуплицированный `mtproto_merged.txt` и делает commit только при изменении содержимого. SOCKS5-файлы зеркалируются как данные, но Android-приложение их не проверяет и не выдаёт за MTProto.
-- Telegram-каналы через **зеркала** (не только прямой `t.me/s/...`)
-- Remote manifest + пользовательские URL (Room `sources`)
+## exteraGram plugin
+
+Плагин находится в [`exteragram/kupu_proxy.plugin`](exteragram/kupu_proxy.plugin). Инструкция: [`exteragram/README.md`](exteragram/README.md).
+
+Команды: `.kupu scan`, `.kupu chat`, `.kupu auto`, `.kupu update`.
 
 ## Сборка
 
+Требования: JDK 17 и Android SDK 35.
+
 ```bash
-./gradlew assembleDebug
-./gradlew assembleRelease
-./gradlew test
+./gradlew testDebugUnitTest lintDebug assembleDebug
 ```
 
-Требования: JDK 17, Android SDK 35.
+Основные каталоги:
 
-## Feature flags
-
-| Flag | Default | Описание |
-|------|---------|----------|
-| `FEATURE_CHANNEL_FEED` | `false` | Лента постов `t.me/s/KupuProxy` внутри app |
-
-## Privacy
-
-- Нет рекламных SDK, трекеров и аналитики.
-- Промо канала — только локальный UI + Intent в Telegram.
+```text
+core/       константы и общие утилиты
+domain/     модели, парсер, источники и агрегатор
+data/       сеть, Room, DataStore и экспорт
+ui/         Jetpack Compose и Material 3
+work/       фоновые проверки и обновления
+```
 
 ## English
 
-KupuProxy finds and verifies Telegram MTProto proxies. Subscribe: **https://t.me/KupuProxy**.  
-Plugin for exteraGram lives in `exteragram/`. Multi-format parser, parallel aggregation, MTProto liveness check, offline seed, channel promo without trackers.
+KupuProxy is an Android app for collecting and independently verifying Telegram MTProto proxies. Version 1.4.0 adds scan depth presets, reliability history, source statistics, favorite monitoring, QR import/export, home screen customization, personal themes, and checks of up to 15,000 unique addresses.
+
+Download the APK from [GitHub Releases](https://github.com/Kirillka645/KupuProxy/releases/latest). No advertising SDKs, analytics, or trackers are included.
 
 ## License
 
-MIT
+[MIT](LICENSE)

@@ -3,7 +3,11 @@ package com.kupuproxy.app.core.util
 import android.graphics.Bitmap
 import android.graphics.Color
 import com.google.zxing.BarcodeFormat
+import com.google.zxing.BinaryBitmap
 import com.google.zxing.EncodeHintType
+import com.google.zxing.MultiFormatReader
+import com.google.zxing.RGBLuminanceSource
+import com.google.zxing.common.HybridBinarizer
 import com.google.zxing.qrcode.QRCodeWriter
 
 object QrEncoder {
@@ -17,5 +21,13 @@ object QrEncoder {
             }
         }
         return bmp
+    }
+
+    fun decode(bitmap: Bitmap): String? {
+        val pixels = IntArray(bitmap.width * bitmap.height)
+        bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+        val source = RGBLuminanceSource(bitmap.width, bitmap.height, pixels)
+        return runCatching { MultiFormatReader().decode(BinaryBitmap(HybridBinarizer(source))).text }
+            .getOrNull()
     }
 }
