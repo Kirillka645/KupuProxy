@@ -262,7 +262,8 @@ class ProxyLoadingActivity : AppCompatActivity() {
         scanJob =
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
-                    val observations = mutableListOf<ProxyObservation>()
+                    val observations =
+                        java.util.Collections.synchronizedList(mutableListOf<ProxyObservation>())
                     var sourceHits: Map<String, Int> = emptyMap()
                     updateState(
                         message = getString(R.string.scan_profile, settings.label),

@@ -108,7 +108,7 @@
     <string name="home_profile_title">Network profile</string>
     <string name="profile_auto">Auto</string>
     <string name="profile_wifi">Wi-Fi</string>
-    <string name="profile_mobile">LTE / mobile</string>
+    <string name="profile_mobile">LTE</string>
     <string name="profile_current_wifi">Now: Wi-Fi</string>
     <string name="profile_current_mobile">Now: LTE / mobile</string>
     <string name="profile_limits">Up to %1$d addresses · %2$d workers · target %3$d</string>
@@ -300,7 +300,7 @@
     <string name="scan_custom_limit">Address limit</string>
     <string name="scan_custom_limit_hint">From 100 to %1$d</string>
     <string name="scan_custom_workers">Parallel checks</string>
-    <string name="scan_custom_workers_hint">From 16 to 64; higher values use more battery and traffic</string>
+    <string name="scan_custom_workers_hint">From 16 to 96; higher values use more battery and traffic</string>
     <string name="insights_title">Reliability and history</string>
     <string name="insights_summary">See source yield and proxies that work consistently</string>
     <string name="insights_sources">Latest source results</string>

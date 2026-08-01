@@ -41,7 +41,7 @@ class FavoriteMonitorWorker(context: Context, params: WorkerParameters) : Corout
         val favorites = ProxyCache.getFavorites(applicationContext).toList()
         if (favorites.isEmpty()) return Result.success()
         return try {
-            val observations = mutableListOf<ProxyObservation>()
+            val observations = java.util.Collections.synchronizedList(mutableListOf<ProxyObservation>())
             val base = ProfileSettings.forMode(NetworkProfileMode.AUTO, applicationContext)
             ProxyManager.checkProxiesPingParallel(
                 proxies = favorites,

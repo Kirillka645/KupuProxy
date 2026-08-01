@@ -108,7 +108,7 @@
     <string name="home_profile_title">Профиль сети</string>
     <string name="profile_auto">Авто</string>
     <string name="profile_wifi">Wi-Fi</string>
-    <string name="profile_mobile">LTE / мобильный</string>
+    <string name="profile_mobile">LTE</string>
     <string name="profile_current_wifi">Сейчас: Wi-Fi</string>
     <string name="profile_current_mobile">Сейчас: LTE / мобильный</string>
     <string name="profile_limits">До %1$d адресов · %2$d потоков · цель %3$d</string>
@@ -300,7 +300,7 @@
     <string name="scan_custom_limit">Лимит адресов</string>
     <string name="scan_custom_limit_hint">От 100 до %1$d</string>
     <string name="scan_custom_workers">Параллельные проверки</string>
-    <string name="scan_custom_workers_hint">От 16 до 64; большие значения расходуют больше батареи и трафика</string>
+    <string name="scan_custom_workers_hint">От 16 до 96; большие значения расходуют больше батареи и трафика</string>
     <string name="insights_title">Надёжность и история</string>
     <string name="insights_summary">Статистика источников и стабильно работающие прокси</string>
     <string name="insights_sources">Последние результаты источников</string>

@@ -39,8 +39,8 @@ data class ProfileSettings(
                     ProfileSettings(
                         mode = effective,
                         label = context?.getString(R.string.profile_mobile) ?: "LTE / mobile",
-                        batchSize = 32, // параллельных проверок
-                        connectTimeoutMs = 1500, // TCP
+                        batchSize = 64, // параллельных проверок
+                        connectTimeoutMs = 1200, // TCP
                         maxPingMs = 6000,
                         maxToCheck = MAX_SCAN_PROXIES,
                         stopWhenFound = 0,
@@ -49,8 +49,8 @@ data class ProfileSettings(
                     ProfileSettings(
                         mode = NetworkProfileMode.WIFI,
                         label = context?.getString(R.string.profile_wifi) ?: "Wi-Fi",
-                        batchSize = 48,
-                        connectTimeoutMs = 1800,
+                        batchSize = 80,
+                        connectTimeoutMs = 1300,
                         maxPingMs = 8000,
                         maxToCheck = MAX_SCAN_PROXIES,
                         stopWhenFound = 0,

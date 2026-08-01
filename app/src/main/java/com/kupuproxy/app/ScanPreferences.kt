@@ -7,7 +7,7 @@ enum class ScanMode { QUICK, BALANCED, FULL, CUSTOM }
 data class ScanConfiguration(
     val mode: ScanMode = ScanMode.BALANCED,
     val customLimit: Int = 5_000,
-    val customWorkers: Int = 40,
+    val customWorkers: Int = 48,
 )
 
 object ScanPreferences {
@@ -22,7 +22,7 @@ object ScanPreferences {
             mode = ScanMode.entries.firstOrNull { it.name == prefs.getString(KEY_MODE, null) }
                 ?: ScanMode.BALANCED,
             customLimit = prefs.getInt(KEY_LIMIT, 5_000).coerceIn(100, MAX_SCAN_PROXIES),
-            customWorkers = prefs.getInt(KEY_WORKERS, 40).coerceIn(16, 64),
+            customWorkers = prefs.getInt(KEY_WORKERS, 48).coerceIn(16, 96),
         )
     }
 
@@ -30,19 +30,19 @@ object ScanPreferences {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putString(KEY_MODE, configuration.mode.name)
             .putInt(KEY_LIMIT, configuration.customLimit.coerceIn(100, MAX_SCAN_PROXIES))
-            .putInt(KEY_WORKERS, configuration.customWorkers.coerceIn(16, 64))
+            .putInt(KEY_WORKERS, configuration.customWorkers.coerceIn(16, 96))
             .apply()
     }
 
     fun apply(base: ProfileSettings, configuration: ScanConfiguration): ProfileSettings =
         when (configuration.mode) {
-            ScanMode.QUICK -> base.copy(maxToCheck = 500, batchSize = minOf(base.batchSize, 32), stopWhenFound = 25)
+            ScanMode.QUICK -> base.copy(maxToCheck = 500, batchSize = minOf(base.batchSize, 64), stopWhenFound = 25)
             ScanMode.BALANCED -> base.copy(maxToCheck = 3_000, stopWhenFound = 0)
             ScanMode.FULL -> base.copy(maxToCheck = MAX_SCAN_PROXIES, stopWhenFound = 0)
             ScanMode.CUSTOM ->
                 base.copy(
                     maxToCheck = configuration.customLimit.coerceIn(100, MAX_SCAN_PROXIES),
-                    batchSize = configuration.customWorkers.coerceIn(16, 64),
+                    batchSize = configuration.customWorkers.coerceIn(16, 96),
                     stopWhenFound = 0,
                 )
         }

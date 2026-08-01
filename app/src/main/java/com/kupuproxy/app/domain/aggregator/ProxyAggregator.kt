@@ -24,7 +24,8 @@ import okhttp3.OkHttpClient
 class ProxyAggregator(
     private val client: OkHttpClient,
     private val parallelism: Int = Constants.AGGREGATOR_PARALLELISM,
-    private val timeoutMs: Long = Constants.SOURCE_TIMEOUT_MS
+    private val timeoutMs: Long = Constants.SOURCE_TIMEOUT_MS,
+    private val maxAttempts: Int = 3,
 ) {
 
     suspend fun collect(
@@ -62,7 +63,8 @@ class ProxyAggregator(
     private suspend fun fetchWithRetry(source: ProxySource): SourceResult {
         var lastError: ProxyError = ProxyError.Unknown("unknown")
         val delays = longArrayOf(500L, 2000L, 8000L)
-        repeat(3) { attempt ->
+        val attempts = maxAttempts.coerceIn(1, 3)
+        repeat(attempts) { attempt ->
             try {
                 val entries = withTimeout(timeoutMs) {
                     source.fetch(client)
@@ -79,7 +81,7 @@ class ProxyAggregator(
             } catch (e: Exception) {
                 lastError = ProxyError.Network(e.message ?: e.javaClass.simpleName)
             }
-            if (attempt < delays.lastIndex) {
+            if (attempt < attempts - 1) {
                 val jitter = Random.nextLong(0, 200)
                 delay(delays[attempt] + jitter)
             }

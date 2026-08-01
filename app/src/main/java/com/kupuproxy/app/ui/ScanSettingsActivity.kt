@@ -116,7 +116,7 @@ class ScanSettingsActivity : AppCompatActivity() {
                                     onValueChange = { value ->
                                         if (value.all(Char::isDigit) && value.length <= 2) {
                                             workersText = value
-                                            value.toIntOrNull()?.takeIf { it in 16..64 }?.let {
+                                            value.toIntOrNull()?.takeIf { it in 16..96 }?.let {
                                                 save(configuration.copy(customWorkers = it))
                                             }
                                         }
