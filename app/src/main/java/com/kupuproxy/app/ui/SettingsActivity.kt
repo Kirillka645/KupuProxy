@@ -18,6 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -69,20 +70,48 @@ class SettingsActivity : ComponentActivity() {
                                 IconButton(onClick = { finish() }) {
                                     Icon(
                                         Icons.AutoMirrored.Filled.ArrowBack,
-                                        contentDescription = null
+                                        contentDescription = null,
                                     )
                                 }
-                            }
+                            },
                         )
                     }
                 ) { padding ->
                     Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(padding)
-                            .verticalScroll(rememberScrollState())
+                        modifier =
+                            Modifier.fillMaxSize()
+                                .padding(padding)
+                                .verticalScroll(rememberScrollState())
                     ) {
                         LanguageListItem()
+                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                        ListItem(
+                            headlineContent = { Text(stringResource(R.string.appearance_title)) },
+                            supportingContent = {
+                                Text(
+                                    stringResource(R.string.appearance_summary),
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            },
+                            leadingContent = {
+                                Icon(Icons.Default.Palette, contentDescription = null)
+                            },
+                            trailingContent = {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                    contentDescription = null,
+                                )
+                            },
+                            modifier =
+                                Modifier.fillMaxWidth().clickable {
+                                    startActivity(
+                                        Intent(
+                                            this@SettingsActivity,
+                                            AppearanceActivity::class.java,
+                                        )
+                                    )
+                                },
+                        )
                         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                         ChannelSettingsListItem(
                             onClick = { TelegramIntents.openTelegramChannel(this@SettingsActivity) }
@@ -93,75 +122,103 @@ class SettingsActivity : ComponentActivity() {
                             supportingContent = {
                                 Text(
                                     "Свои URL (txt/json) для мега-скана — работают без Telegram",
-                                    style = MaterialTheme.typography.bodySmall
+                                    style = MaterialTheme.typography.bodySmall,
                                 )
                             },
                             trailingContent = {
                                 Icon(
                                     Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                    contentDescription = null
+                                    contentDescription = null,
                                 )
                             },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
+                            modifier =
+                                Modifier.fillMaxWidth().clickable {
                                     startActivity(
                                         Intent(
                                             this@SettingsActivity,
-                                            UserSourcesActivity::class.java
+                                            UserSourcesActivity::class.java,
                                         )
                                     )
-                                }
+                                },
                         )
                         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                         ListItem(
                             headlineContent = { Text("Автообновление прокси") },
-                            supportingContent = { Text("Verified collector и основные GitHub-источники") },
+                            supportingContent = {
+                                Text("Verified collector и основные GitHub-источники")
+                            },
                             trailingContent = {
                                 Switch(
                                     checked = refreshSettings.enabled,
-                                    onCheckedChange = { saveRefresh(refreshSettings.copy(enabled = it)) }
+                                    onCheckedChange = {
+                                        saveRefresh(refreshSettings.copy(enabled = it))
+                                    },
                                 )
-                            }
+                            },
                         )
-                        Text("Интервал", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 16.dp))
+                        Text(
+                            "Интервал",
+                            style = MaterialTheme.typography.labelLarge,
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                        )
                         Row(
                             modifier = Modifier.padding(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             listOf(3L, 6L, 12L, 24L).forEach { hours ->
                                 AssistChip(
                                     onClick = { saveRefresh(refreshSettings.copy(hours = hours)) },
-                                    label = { Text(if (refreshSettings.hours == hours) "✓ ${hours}ч" else "${hours}ч") }
+                                    label = {
+                                        Text(
+                                            if (refreshSettings.hours == hours) "✓ ${hours}ч"
+                                            else "${hours}ч"
+                                        )
+                                    },
                                 )
                             }
                         }
                         ListItem(
                             headlineContent = { Text("Только безлимитная сеть") },
-                            supportingContent = { Text("Обычно Wi-Fi; Android определяет сеть как unmetered") },
+                            supportingContent = {
+                                Text("Обычно Wi-Fi; Android определяет сеть как unmetered")
+                            },
                             trailingContent = {
                                 Switch(
                                     checked = refreshSettings.wifiOnly,
-                                    onCheckedChange = { saveRefresh(refreshSettings.copy(wifiOnly = it)) }
+                                    onCheckedChange = {
+                                        saveRefresh(refreshSettings.copy(wifiOnly = it))
+                                    },
                                 )
-                            }
+                            },
                         )
                         ListItem(
                             headlineContent = { Text("Источник Kort Verified") },
                             supportingContent = {
-                                Text("Публичные generated feeds kort0881/telegram-proxy-collector. KupuProxy независимо проверяет MTProto handshake.")
+                                Text(
+                                    "Публичные generated feeds kort0881/telegram-proxy-collector. KupuProxy независимо проверяет MTProto handshake."
+                                )
                             },
-                            modifier = Modifier.clickable {
-                                startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/kort0881/telegram-proxy-collector")))
-                            }
+                            modifier =
+                                Modifier.clickable {
+                                    startActivity(
+                                        Intent(
+                                            Intent.ACTION_VIEW,
+                                            android.net.Uri.parse(
+                                                "https://github.com/kort0881/telegram-proxy-collector"
+                                            ),
+                                        )
+                                    )
+                                },
                         )
                         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                         ListItem(
-                            headlineContent = { Text(stringResource(R.string.settings_auto_update)) },
+                            headlineContent = {
+                                Text(stringResource(R.string.settings_auto_update))
+                            },
                             supportingContent = {
                                 Text(
                                     stringResource(R.string.settings_auto_update_summary),
-                                    style = MaterialTheme.typography.bodySmall
+                                    style = MaterialTheme.typography.bodySmall,
                                 )
                             },
                             trailingContent = {
@@ -169,51 +226,55 @@ class SettingsActivity : ComponentActivity() {
                                     checked = autoUpdateEnabled,
                                     onCheckedChange = { enabled ->
                                         autoUpdateEnabled = enabled
-                                        UpdatePreferences.setAutoCheckEnabled(this@SettingsActivity, enabled)
-                                    }
+                                        UpdatePreferences.setAutoCheckEnabled(
+                                            this@SettingsActivity,
+                                            enabled,
+                                        )
+                                    },
                                 )
-                            }
+                            },
                         )
                         ListItem(
                             headlineContent = { Text("Проверить обновления приложения") },
                             supportingContent = {
                                 Text(
                                     "Проверить GitHub Releases и безопасно установить подписанный APK",
-                                    style = MaterialTheme.typography.bodySmall
+                                    style = MaterialTheme.typography.bodySmall,
                                 )
                             },
                             trailingContent = {
                                 Icon(
                                     Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                    contentDescription = null
+                                    contentDescription = null,
                                 )
                             },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
+                            modifier =
+                                Modifier.fillMaxWidth().clickable {
                                     startActivity(
-                                        Intent(this@SettingsActivity, MainActivity::class.java).apply {
-                                            addFlags(
-                                                Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                                        Intent(this@SettingsActivity, MainActivity::class.java)
+                                            .apply {
+                                                addFlags(
+                                                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
                                                         Intent.FLAG_ACTIVITY_SINGLE_TOP
-                                            )
-                                            putExtra(MainActivity.EXTRA_CHECK_UPDATES, true)
-                                        }
+                                                )
+                                                putExtra(MainActivity.EXTRA_CHECK_UPDATES, true)
+                                            }
                                     )
-                                }
+                                },
                         )
                         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                         Text(
                             text = stringResource(R.string.settings_hint),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(16.dp)
+                            modifier = Modifier.padding(16.dp),
                         )
                         Text(
-                            text = "Если Telegram недоступен: мега-скан берёт GitHub/CDN и зеркала каналов (Jina, RSSHub), не только t.me.",
+                            text =
+                                "Если Telegram недоступен: мега-скан берёт GitHub/CDN и зеркала каналов (Jina, RSSHub), не только t.me.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                         )
                     }
                 }
@@ -225,10 +286,10 @@ class SettingsActivity : ComponentActivity() {
     @Composable
     private fun LanguageListItem() {
         val selectedTag = AppLocaleManager.currentTag()
-        val selectedName = AppLocaleManager.supportedLocales
-            .firstOrNull { it.languageTag == selectedTag }
-            ?.nativeName
-            ?: "Как в системе"
+        val selectedName =
+            AppLocaleManager.supportedLocales
+                .firstOrNull { it.languageTag == selectedTag }
+                ?.nativeName ?: "Как в системе"
         ListItem(
             headlineContent = { Text("Язык приложения") },
             supportingContent = {
@@ -236,19 +297,17 @@ class SettingsActivity : ComponentActivity() {
                     Text(selectedName)
                     Text(
                         "Выберите язык интерфейса KupuProxy",
-                        style = MaterialTheme.typography.bodySmall
+                        style = MaterialTheme.typography.bodySmall,
                     )
                 }
             },
             trailingContent = {
                 Icon(
                     Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = null
+                    contentDescription = null,
                 )
             },
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { languageDialogVisible = true }
+            modifier = Modifier.fillMaxWidth().clickable { languageDialogVisible = true },
         )
     }
 
@@ -264,14 +323,14 @@ class SettingsActivity : ComponentActivity() {
                         LanguageOption(
                             title = "Как в системе",
                             selected = selectedTag == null,
-                            onClick = { selectLanguage(null) }
+                            onClick = { selectLanguage(null) },
                         )
                     }
                     items(AppLocaleManager.supportedLocales, key = { it.languageTag }) { locale ->
                         LanguageOption(
                             title = locale.nativeName,
                             selected = selectedTag == locale.languageTag,
-                            onClick = { selectLanguage(locale.languageTag) }
+                            onClick = { selectLanguage(locale.languageTag) },
                         )
                     }
                 }
@@ -280,7 +339,7 @@ class SettingsActivity : ComponentActivity() {
                 TextButton(onClick = { languageDialogVisible = false }) {
                     Text("Отмена")
                 }
-            }
+            },
         )
     }
 
@@ -288,14 +347,12 @@ class SettingsActivity : ComponentActivity() {
     private fun LanguageOption(
         title: String,
         selected: Boolean,
-        onClick: () -> Unit
+        onClick: () -> Unit,
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onClick)
-                .padding(vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
+            modifier =
+                Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             RadioButton(selected = selected, onClick = onClick)
             Text(title, modifier = Modifier.padding(start = 8.dp))

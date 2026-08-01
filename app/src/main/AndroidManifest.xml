@@ -70,6 +70,11 @@
             android:parentActivityName=".MainActivity" />
 
         <activity
+            android:name=".ui.AppearanceActivity"
+            android:exported="false"
+            android:parentActivityName=".ui.SettingsActivity" />
+
+        <activity
             android:name=".ui.AboutActivity"
             android:exported="false"
             android:parentActivityName=".MainActivity" />

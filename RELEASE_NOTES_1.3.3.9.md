@@ -1,20 +1,38 @@
 # KupuProxy v1.3.3.9
 
-## 🔧 Release fix: restore the app after the 1.3.3.8 refactor
+## Главное: стабильность и личный дизайн
 
-This release cleans up the compile break introduced by the previous release prep and restores the app to a buildable state.
+Версия восстанавливает стабильный app flow после подготовки 1.3.3.8 и добавляет полноценную персонализацию интерфейса.
 
-### What was fixed
-- Restored the missing `MainActivity` app flow after the accidental refactor split
-- Restored intent constants used by `CheckFileActivity`, `ProxyListActivity`, and `ProxyLoadingActivity`
-- Fixed locale application on app start so the saved language is applied correctly
-- Kept the update checker and background notification path intact
-- Removed the destructive Room migration fallback so local data is preserved again
+### Личный дизайн
 
-### Quality checks
-- `testDebugUnitTest` now passes after the restore work
-- Update notification permission guard remains in place for Android 13+
-- Export-to-file helper is preserved for file sharing flows
+- системная, светлая и тёмная темы;
+- Dynamic Color на Android 12+;
+- палитры Kupu, Ocean, Violet, Sunset, Forest и Mono;
+- собственные основной и акцентный цвета в формате `#RRGGBB`;
+- автоматический подбор контрастного цвета текста;
+- компактные, обычные и круглые элементы;
+- четыре безопасных размера текста;
+- живой предпросмотр, автоматическое сохранение и полный сброс;
+- настройки применяются ко всем Compose-экранам без перезапуска приложения.
 
-### Notes
-This build is a maintenance release. It is meant to get the app back to a stable, releasable state before the next functional changes.
+### Исправления
+
+- восстановлены полный `MainActivity` flow и intent-константы экранов;
+- сохранённый язык применяется при запуске;
+- Room больше не удаляет локальные данные при несовпадении схемы;
+- уведомления об обновлении учитывают разрешение Android 13+;
+- экспорт во временный файл использует безопасное имя и `FileProvider`;
+- исходники `MainActivity` снова отформатированы и пригодны для сопровождения;
+- пользовательские цвета проверяются до сохранения, некорректные значения заменяются безопасными стандартными.
+
+### Качество
+
+- 57 unit-тестов без ошибок, включая настройки оформления и регрессионные тесты приложения;
+- Compose UI smoke-test экрана личного дизайна;
+- `testDebugUnitTest`, `lintDebug` и `assembleDebug` проходят;
+- версия: `1.3.3.9`, `versionCode 19`.
+
+Подготовленный APK подписан тем же сертификатом, что и `1.3.3.8`.
+
+SHA-256: `bda8bbb62dbf3a21a7b05402d32dd13ef5bee940c286b3f30b453c055b6240a9`
