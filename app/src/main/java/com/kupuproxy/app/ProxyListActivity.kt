@@ -50,6 +50,7 @@ import com.kupuproxy.app.ui.components.ProxyResultCard
 import com.kupuproxy.app.ui.components.channel.ChannelInviteDialog
 import com.kupuproxy.app.ui.components.channel.EmptyStateWithChannel
 import com.kupuproxy.app.ui.theme.KupuProxyTheme
+import com.kupuproxy.app.ui.theme.kupuSafeScreen
 import kotlinx.coroutines.launch
 
 class ProxyListActivity : AppCompatActivity() {
@@ -90,6 +91,7 @@ class ProxyListActivity : AppCompatActivity() {
         val filtered =
             if (maxPing == Int.MAX_VALUE) proxies else proxies.filter { it.pingMs in 1..maxPing }
         Scaffold(
+            modifier = Modifier.kupuSafeScreen(),
             topBar = {
                 TopAppBar(
                     title = {

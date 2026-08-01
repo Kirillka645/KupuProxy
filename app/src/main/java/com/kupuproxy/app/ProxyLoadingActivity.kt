@@ -44,6 +44,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import com.kupuproxy.app.ui.components.ProxyResultCard
 import com.kupuproxy.app.ui.theme.KupuProxyTheme
+import com.kupuproxy.app.ui.theme.kupuBottomActions
+import com.kupuproxy.app.ui.theme.kupuSafeScreen
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -89,6 +91,7 @@ class ProxyLoadingActivity : AppCompatActivity() {
     @Composable
     private fun ScanScreen() {
         Scaffold(
+            modifier = Modifier.kupuSafeScreen(),
             topBar = {
                 TopAppBar(
                     title = {
@@ -113,7 +116,7 @@ class ProxyLoadingActivity : AppCompatActivity() {
             },
             bottomBar = {
                 Row(
-                    Modifier.fillMaxWidth().padding(16.dp),
+                    Modifier.fillMaxWidth().kupuBottomActions().padding(16.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     OutlinedButton(onClick = ::cancelOrClose, modifier = Modifier.weight(1f)) {

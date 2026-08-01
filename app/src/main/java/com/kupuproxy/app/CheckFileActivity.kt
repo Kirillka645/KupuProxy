@@ -39,6 +39,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import com.kupuproxy.app.ui.theme.KupuProxyTheme
+import com.kupuproxy.app.ui.theme.kupuSafeScreen
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -81,6 +82,7 @@ class CheckFileActivity : AppCompatActivity() {
     @Composable
     private fun FileCheckScreen() {
         Scaffold(
+            modifier = Modifier.kupuSafeScreen(),
             topBar = {
                 TopAppBar(
                     title = {
@@ -98,7 +100,7 @@ class CheckFileActivity : AppCompatActivity() {
                         }
                     },
                 )
-            }
+            },
         ) { padding ->
             Column(
                 modifier = Modifier.fillMaxSize().padding(padding).padding(20.dp),

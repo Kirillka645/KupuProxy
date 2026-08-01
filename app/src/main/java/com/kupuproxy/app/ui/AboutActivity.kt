@@ -22,6 +22,7 @@ import com.kupuproxy.app.R
 import com.kupuproxy.app.core.util.TelegramIntents
 import com.kupuproxy.app.ui.components.channel.AboutChannelSection
 import com.kupuproxy.app.ui.theme.KupuProxyTheme
+import com.kupuproxy.app.ui.theme.kupuSafeScreen
 
 class AboutActivity : AppCompatActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
@@ -30,6 +31,7 @@ class AboutActivity : AppCompatActivity() {
         setContent {
             KupuProxyTheme {
                 Scaffold(
+                    modifier = Modifier.kupuSafeScreen(),
                     topBar = {
                         TopAppBar(
                             title = { Text(stringResource(R.string.about)) },
@@ -42,7 +44,7 @@ class AboutActivity : AppCompatActivity() {
                                 }
                             },
                         )
-                    }
+                    },
                 ) { padding ->
                     Box(
                         modifier = Modifier.fillMaxSize().padding(padding),

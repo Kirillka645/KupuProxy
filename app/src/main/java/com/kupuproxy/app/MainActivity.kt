@@ -80,6 +80,7 @@ import com.kupuproxy.app.ui.AppearanceActivity
 import com.kupuproxy.app.ui.SettingsActivity
 import com.kupuproxy.app.ui.components.channel.ChannelPromoHost
 import com.kupuproxy.app.ui.theme.KupuProxyTheme
+import com.kupuproxy.app.ui.theme.kupuSafeScreen
 import com.kupuproxy.app.updater.ApkDownloader
 import com.kupuproxy.app.updater.GitHubRelease
 import com.kupuproxy.app.updater.UpdateCheckResult
@@ -164,6 +165,7 @@ class MainActivity : AppCompatActivity() {
         val profileSettings = ProfileSettings.forMode(selectedProfile, this)
         val localizedHomeSources = homeSources()
         Scaffold(
+            modifier = Modifier.kupuSafeScreen(),
             topBar = {
                 TopAppBar(
                     title = {
@@ -215,7 +217,7 @@ class MainActivity : AppCompatActivity() {
                         }
                     },
                 )
-            }
+            },
         ) { padding ->
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(padding),

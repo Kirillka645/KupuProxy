@@ -49,6 +49,8 @@ import com.kupuproxy.app.ui.theme.CornerStyle
 import com.kupuproxy.app.ui.theme.FontScale
 import com.kupuproxy.app.ui.theme.KupuProxyTheme
 import com.kupuproxy.app.ui.theme.ThemeMode
+import com.kupuproxy.app.ui.theme.kupuImeAware
+import com.kupuproxy.app.ui.theme.kupuSafeScreen
 import com.kupuproxy.app.ui.theme.normalizeHexColor
 
 class AppearanceActivity : AppCompatActivity() {
@@ -69,6 +71,7 @@ class AppearanceActivity : AppCompatActivity() {
     @Composable
     private fun AppearanceScreen() {
         Scaffold(
+            modifier = Modifier.kupuSafeScreen(),
             topBar = {
                 TopAppBar(
                     title = { Text(stringResource(R.string.appearance_title)) },
@@ -91,7 +94,7 @@ class AppearanceActivity : AppCompatActivity() {
                         }
                     },
                 )
-            }
+            },
         ) { padding ->
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(padding),
@@ -244,6 +247,7 @@ class AppearanceActivity : AppCompatActivity() {
         val primaryValid = normalizedPrimary != null
         val accentValid = normalizedAccent != null
         AlertDialog(
+            modifier = Modifier.kupuImeAware(),
             onDismissRequest = { customDialogVisible = false },
             title = { Text(stringResource(R.string.appearance_custom_colors)) },
             text = {

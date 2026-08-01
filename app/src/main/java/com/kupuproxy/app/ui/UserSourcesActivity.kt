@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -41,6 +43,8 @@ import com.kupuproxy.app.R
 import com.kupuproxy.app.data.local.db.SourceEntity
 import com.kupuproxy.app.data.source.UserCustomSourceStore
 import com.kupuproxy.app.ui.theme.KupuProxyTheme
+import com.kupuproxy.app.ui.theme.kupuImeAware
+import com.kupuproxy.app.ui.theme.kupuSafeScreen
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -62,6 +66,7 @@ class UserSourcesActivity : AppCompatActivity() {
                 }
 
                 Scaffold(
+                    modifier = Modifier.kupuSafeScreen(),
                     topBar = {
                         TopAppBar(
                             title = { Text(stringResource(R.string.custom_sources_title)) },
@@ -117,10 +122,11 @@ class UserSourcesActivity : AppCompatActivity() {
 
                 if (showAdd) {
                     AlertDialog(
+                        modifier = Modifier.kupuImeAware(),
                         onDismissRequest = { showAdd = false },
                         title = { Text(stringResource(R.string.custom_source_new)) },
                         text = {
-                            Column {
+                            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                                 OutlinedTextField(
                                     value = name,
                                     onValueChange = { name = it },

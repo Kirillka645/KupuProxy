@@ -47,6 +47,7 @@ import com.kupuproxy.app.core.locale.AppLocaleManager
 import com.kupuproxy.app.core.util.TelegramIntents
 import com.kupuproxy.app.ui.components.channel.ChannelSettingsListItem
 import com.kupuproxy.app.ui.theme.KupuProxyTheme
+import com.kupuproxy.app.ui.theme.kupuSafeScreen
 import com.kupuproxy.app.work.ProxyRefreshPreferences
 import com.kupuproxy.app.work.UpdatePreferences
 
@@ -63,6 +64,7 @@ class SettingsActivity : AppCompatActivity() {
         setContent {
             KupuProxyTheme {
                 Scaffold(
+                    modifier = Modifier.kupuSafeScreen(),
                     topBar = {
                         TopAppBar(
                             title = { Text(stringResource(R.string.settings_title)) },
@@ -75,7 +77,7 @@ class SettingsActivity : AppCompatActivity() {
                                 }
                             },
                         )
-                    }
+                    },
                 ) { padding ->
                     Column(
                         modifier =
