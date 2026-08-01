@@ -299,13 +299,75 @@ object ProxyManager {
             val stopped = AtomicBoolean(false)
             val results = java.util.Collections.synchronizedList(mutableListOf<ProxyWithPing>())
 
+            // A large collector often contains several secrets for the same dead host. Probe each
+            // host:port only once with a short TCP timeout, then spend the heavier Telegram
+            // handshake only on endpoints that accepted a connection.
+            val endpointGroups = linkedMapOf<String, MutableList<String>>()
+            proxies.forEach { url ->
+                val parsed = if (url.contains("socks?", ignoreCase = true)) null
+                    else MtprotoChecker.parseProxy(url)
+                if (parsed == null) {
+                    val done = processed.incrementAndGet()
+                    onChecked(ProxyObservation(url, ok = false, pingMs = -1))
+                    if (done == total || done % 16 == 0) {
+                        withContext(Dispatchers.Main) { onProgress(done, total, working.get()) }
+                    }
+                } else {
+                    val key = "${parsed.host.lowercase()}:${parsed.port}"
+                    endpointGroups.getOrPut(key) { mutableListOf() }.add(url)
+                }
+            }
+
+            val reachable = java.util.Collections.synchronizedList(mutableListOf<String>())
+            val endpointCursor = AtomicInteger(0)
+            val endpoints = endpointGroups.entries.toList()
+            val probeTimeoutMs = (connectMs / 2).coerceIn(500, 800)
+            coroutineScope {
+                List(minOf(128, endpoints.size)) {
+                        async {
+                            while (currentCoroutineContext().isActive) {
+                                val index = endpointCursor.getAndIncrement()
+                                if (index >= endpoints.size) break
+                                val (_, urls) = endpoints[index]
+                                val parsed = MtprotoChecker.parseProxy(urls.first())
+                                val online =
+                                    parsed != null &&
+                                        MtprotoChecker.isTcpReachable(
+                                            parsed.host,
+                                            parsed.port,
+                                            probeTimeoutMs,
+                                        )
+                                if (online) {
+                                    reachable.addAll(urls)
+                                } else {
+                                    urls.forEach { url ->
+                                        val done = processed.incrementAndGet()
+                                        onChecked(ProxyObservation(url, ok = false, pingMs = -1))
+                                        if (done == total || done % 16 == 0) {
+                                            withContext(Dispatchers.Main) {
+                                                onProgress(done, total, working.get())
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .awaitAll()
+            }
+
+            if (reachable.isEmpty()) {
+                withContext(Dispatchers.Main) { onProgress(total, total, 0) }
+                return@withContext emptyList()
+            }
+
             coroutineScope {
                 List(concurrency) {
                         async {
                             while (currentCoroutineContext().isActive && !stopped.get()) {
                                 val index = cursor.getAndIncrement()
-                                if (index >= total) break
-                                val proxyUrl = proxies[index]
+                                if (index >= reachable.size) break
+                                val proxyUrl = reachable[index]
 
                                 val item =
                                     if (proxyUrl.contains("socks?", ignoreCase = true)) {

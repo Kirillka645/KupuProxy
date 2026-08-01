@@ -56,6 +56,20 @@ object MtprotoChecker {
         return check(parsed.host, parsed.port, parsed.secret, connectTimeoutMs, responseTimeoutMs)
     }
 
+    /** Lightweight first pass used before the cryptographic MTProto handshake. */
+    fun isTcpReachable(host: String, port: Int, timeoutMs: Int): Boolean {
+        if (host.isBlank() || port !in 1..65535) return false
+        return try {
+            Socket().use { socket ->
+                socket.tcpNoDelay = true
+                socket.connect(InetSocketAddress(host, port), timeoutMs.coerceIn(400, 1_200))
+                true
+            }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     fun check(
         host: String,
         port: Int,
