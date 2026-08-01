@@ -49,18 +49,21 @@ import com.kupuproxy.app.ui.components.channel.ChannelSettingsListItem
 import com.kupuproxy.app.ui.theme.KupuProxyTheme
 import com.kupuproxy.app.ui.theme.kupuSafeScreen
 import com.kupuproxy.app.work.ProxyRefreshPreferences
+import com.kupuproxy.app.work.FavoriteMonitorPreferences
 import com.kupuproxy.app.work.UpdatePreferences
 
 class SettingsActivity : AppCompatActivity() {
     private var refreshSettings by mutableStateOf(ProxyRefreshPreferences.Settings())
     private var languageDialogVisible by mutableStateOf(false)
     private var autoUpdateEnabled by mutableStateOf(true)
+    private var favoriteMonitorEnabled by mutableStateOf(false)
 
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         refreshSettings = ProxyRefreshPreferences.load(this)
         autoUpdateEnabled = UpdatePreferences.isAutoCheckEnabled(this)
+        favoriteMonitorEnabled = FavoriteMonitorPreferences.isEnabled(this)
         setContent {
             KupuProxyTheme {
                 Scaffold(
@@ -115,6 +118,40 @@ class SettingsActivity : AppCompatActivity() {
                                 },
                         )
                         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                        SettingsLink(
+                            R.string.scan_settings_title,
+                            R.string.scan_settings_summary,
+                            ScanSettingsActivity::class.java,
+                        )
+                        SettingsLink(
+                            R.string.insights_title,
+                            R.string.insights_summary,
+                            InsightsActivity::class.java,
+                        )
+                        ListItem(
+                            headlineContent = { Text(stringResource(R.string.favorite_monitor_title)) },
+                            supportingContent = { Text(stringResource(R.string.favorite_monitor_summary)) },
+                            trailingContent = {
+                                Switch(
+                                    checked = favoriteMonitorEnabled,
+                                    onCheckedChange = {
+                                        favoriteMonitorEnabled = it
+                                        FavoriteMonitorPreferences.setEnabled(this@SettingsActivity, it)
+                                    },
+                                )
+                            },
+                        )
+                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                        SettingsLink(
+                            R.string.qr_title,
+                            R.string.qr_summary,
+                            QrToolsActivity::class.java,
+                        )
+                        SettingsLink(
+                            R.string.home_layout_title,
+                            R.string.home_layout_summary,
+                            HomeLayoutActivity::class.java,
+                        )
                         ChannelSettingsListItem(
                             onClick = { TelegramIntents.openTelegramChannel(this@SettingsActivity) }
                         )
@@ -375,6 +412,21 @@ class SettingsActivity : AppCompatActivity() {
     private fun selectLanguage(languageTag: String?) {
         languageDialogVisible = false
         AppLocaleManager.apply(languageTag)
+    }
+
+    @Composable
+    private fun SettingsLink(title: Int, summary: Int, activity: Class<out android.app.Activity>) {
+        ListItem(
+            headlineContent = { Text(stringResource(title)) },
+            supportingContent = { Text(stringResource(summary), style = MaterialTheme.typography.bodySmall) },
+            trailingContent = {
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
+            },
+            modifier = Modifier.fillMaxWidth().clickable {
+                startActivity(Intent(this@SettingsActivity, activity))
+            },
+        )
+        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
     }
 
     private fun saveRefresh(settings: ProxyRefreshPreferences.Settings) {

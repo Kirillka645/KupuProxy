@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
@@ -86,6 +87,7 @@ import com.kupuproxy.app.updater.GitHubRelease
 import com.kupuproxy.app.updater.UpdateCheckResult
 import com.kupuproxy.app.updater.UpdateChecker
 import com.kupuproxy.app.work.ProxyRescanWorker
+import com.kupuproxy.app.work.FavoriteMonitorWorker
 import com.kupuproxy.app.work.UpdateCheckWorker
 import java.io.File
 import kotlinx.coroutines.launch
@@ -99,6 +101,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var promoPreferences: PromoPreferences
 
     private var selectedProfile by mutableStateOf(NetworkProfileMode.AUTO)
+    private var scanConfiguration by mutableStateOf(ScanConfiguration())
+    private var homeLayout by mutableStateOf(HomeSourceLayout(HomeLayoutPreferences.defaultOrder, emptySet()))
     private var networkLabel by mutableStateOf("")
     private var counts by mutableStateOf(HomeCounts())
     private var kortStatus by mutableStateOf(ProxyCache.KortStatus())
@@ -128,12 +132,15 @@ class MainActivity : AppCompatActivity() {
         apkDownloader = ApkDownloader(this)
         promoPreferences = PromoPreferences(this)
         selectedProfile = savedProfileMode()
+        scanConfiguration = ScanPreferences.load(this)
+        homeLayout = HomeLayoutPreferences.load(this)
 
         setContent { KupuProxyTheme { HomeScreen() } }
 
         lifecycleScope.launch { promoDismissed = promoPreferences.isPromoDismissed() }
         if (!handleManualUpdateCheck(intent)) checkForUpdates()
         ProxyRescanWorker.schedule(this, com.kupuproxy.app.work.ProxyRefreshPreferences.load(this))
+        FavoriteMonitorWorker.schedule(this)
         UpdateCheckWorker.schedule(this)
         lifecycleScope.launch { ProxyCache.migrateCleanup(this@MainActivity) }
     }
@@ -146,6 +153,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        scanConfiguration = ScanPreferences.load(this)
+        homeLayout = HomeLayoutPreferences.load(this)
         refreshHomeState()
         pendingUpdateFile?.let { file ->
             if (apkDownloader.canInstallPackages() && apkDownloader.isVerifiedUpdateFile(file)) {
@@ -162,7 +171,8 @@ class MainActivity : AppCompatActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     private fun HomeScreen() {
-        val profileSettings = ProfileSettings.forMode(selectedProfile, this)
+        val profileSettings =
+            ScanPreferences.apply(ProfileSettings.forMode(selectedProfile, this), scanConfiguration)
         val localizedHomeSources = homeSources()
         Scaffold(
             modifier = Modifier.kupuSafeScreen(),
@@ -238,6 +248,7 @@ class MainActivity : AppCompatActivity() {
                         refreshHomeState()
                     }
                 }
+                item { ScanModeSelector() }
                 if (promoDismissed == false) {
                     item {
                         ChannelPromoHost(
@@ -612,7 +623,11 @@ class MainActivity : AppCompatActivity() {
                     )
                 }
             }
-            val settings = ProfileSettings.forMode(selected, this@MainActivity)
+            val settings =
+                ScanPreferences.apply(
+                    ProfileSettings.forMode(selected, this@MainActivity),
+                    scanConfiguration,
+                )
             Text(
                 stringResource(
                     R.string.profile_limits_all,
@@ -622,6 +637,58 @@ class MainActivity : AppCompatActivity() {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+    }
+
+    @Composable
+    private fun ScanModeSelector() {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                stringResource(R.string.scan_mode_title),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(ScanMode.entries, key = ScanMode::name) { mode ->
+                    AssistChip(
+                        onClick = {
+                            scanConfiguration = scanConfiguration.copy(mode = mode)
+                            ScanPreferences.save(this@MainActivity, scanConfiguration)
+                        },
+                        label = {
+                            Text(
+                                stringResource(
+                                    when (mode) {
+                                        ScanMode.QUICK -> R.string.scan_mode_quick
+                                        ScanMode.BALANCED -> R.string.scan_mode_balanced
+                                        ScanMode.FULL -> R.string.scan_mode_full
+                                        ScanMode.CUSTOM -> R.string.scan_mode_custom
+                                    }
+                                )
+                            )
+                        },
+                        leadingIcon =
+                            if (scanConfiguration.mode == mode) {
+                                { Icon(Icons.Default.Speed, contentDescription = null) }
+                            } else null,
+                    )
+                }
+            }
+            if (scanConfiguration.mode == ScanMode.CUSTOM) {
+                TextButton(
+                    onClick = {
+                        startActivity(Intent(this@MainActivity, com.kupuproxy.app.ui.ScanSettingsActivity::class.java))
+                    }
+                ) {
+                    Text(
+                        stringResource(
+                            R.string.scan_mode_custom_summary,
+                            scanConfiguration.customLimit,
+                            scanConfiguration.customWorkers,
+                        )
+                    )
+                }
+            }
         }
     }
 
@@ -1003,8 +1070,8 @@ class MainActivity : AppCompatActivity() {
     )
 
     @Composable
-    private fun homeSources(): List<HomeSource> =
-        listOf(
+    private fun homeSources(): List<HomeSource> {
+        val sources = listOf(
             HomeSource(
                 "solispirit",
                 "SoliSpirit Mega",
@@ -1036,6 +1103,9 @@ class MainActivity : AppCompatActivity() {
                 Icons.Default.Search,
             ),
         )
+        val byId = sources.associateBy(HomeSource::id)
+        return homeLayout.order.mapNotNull(byId::get).filterNot { it.id in homeLayout.hidden }
+    }
 
     companion object {
         const val PREFS = "kupu_settings"

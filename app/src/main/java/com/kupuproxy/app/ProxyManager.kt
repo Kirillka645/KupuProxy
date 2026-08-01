@@ -277,6 +277,7 @@ object ProxyManager {
         profileLabel: String = settings.label,
         onProgress: (processed: Int, total: Int, working: Int) -> Unit,
         onFound: (ProxyWithPing) -> Unit = {},
+        onChecked: (ProxyObservation) -> Unit = {},
     ): List<ProxyWithPing> =
         withContext(Dispatchers.IO) {
             if (proxies.isEmpty()) return@withContext emptyList()
@@ -340,6 +341,13 @@ object ProxyManager {
                                 val workingCount = working.get()
                                 withContext(Dispatchers.Main) {
                                     onProgress(processedCount, total, workingCount)
+                                    onChecked(
+                                        ProxyObservation(
+                                            url = proxyUrl,
+                                            ok = item != null,
+                                            pingMs = item?.pingMs ?: -1,
+                                        )
+                                    )
                                     if (item != null) onFound(item)
                                 }
                             }
