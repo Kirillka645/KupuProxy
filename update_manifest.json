@@ -1,11 +1,11 @@
 {
-  "version": "1.4.0",
-  "tag_name": "v1.4.0",
-  "apk_name": "KupuProxy-v1.4.0.apk",
-  "apk_url": "https://github.com/Kirillka645/KupuProxy/releases/download/v1.4.0/KupuProxy-v1.4.0.apk",
-  "apk_size": 25196566,
-  "sha256": "6676facce83ebf4140b58bc9808c6afcf802a7295ebf1528ebe2653a0b692662",
-  "sha256_url": "https://github.com/Kirillka645/KupuProxy/releases/download/v1.4.0/KupuProxy-v1.4.0.apk.sha256",
-  "release_url": "https://github.com/Kirillka645/KupuProxy/releases/tag/v1.4.0",
-  "changelog": "Добавлены режимы сканирования, история надёжности, статистика источников, мониторинг избранного, QR-импорт и экспорт, настройка главного экрана и обновлённый дизайн. Ускорены получение источников и параллельная MTProto-проверка."
+  "version": "1.4.0.1",
+  "tag_name": "v1.4.0.1",
+  "apk_name": "KupuProxy-v1.4.0.1.apk",
+  "apk_url": "https://github.com/Kirillka645/KupuProxy/releases/download/v1.4.0.1/KupuProxy-v1.4.0.1.apk",
+  "apk_size": 15946261,
+  "sha256": "80ce81f1cceb7899a24d029518f56acd9c55b398be02ffb10d30f19f781c594b",
+  "sha256_url": "https://github.com/Kirillka645/KupuProxy/releases/download/v1.4.0.1/KupuProxy-v1.4.0.1.apk.sha256",
+  "release_url": "https://github.com/Kirillka645/KupuProxy/releases/tag/v1.4.0.1",
+  "changelog": "Ускорен сбор Telegram-источников и зеркал без потери частичных результатов. Добавлены отдельные 72-часовые снимки источников и восстановление локальных данных после прерванной записи. Исправлены локализация названий, языковой fallback и доступность элементов интерфейса. Усилена проверка тега, имени APK, SHA-256, версии и сертификата автообновления."
 }

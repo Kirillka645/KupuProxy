@@ -1,6 +1,7 @@
 package com.kupuproxy.app
 
 import android.content.Context
+import com.kupuproxy.app.domain.source.BuiltInSourceIdentity
 import java.io.File
 import org.json.JSONArray
 import org.json.JSONObject
@@ -74,38 +75,45 @@ object InsightsStore {
 
     private fun read(context: Context): Pair<List<ProxyInsight>, List<SourceInsight>> {
         return try {
-            val file = file(context)
-            if (!file.exists()) emptyList<ProxyInsight>() to emptyList()
+            val content = ProxyCache.atomicReadText(file(context))
+            if (content == null) emptyList<ProxyInsight>() to emptyList()
             else {
-            val root = JSONObject(file.readText())
-            val proxiesArray = root.optJSONArray("proxies") ?: JSONArray()
-            val sourcesArray = root.optJSONArray("sources") ?: JSONArray()
-            val proxies = buildList {
-                for (index in 0 until minOf(proxiesArray.length(), MAX_PROXY_INSIGHTS)) {
-                    val item = proxiesArray.optJSONObject(index) ?: continue
-                    val url = item.optString("url")
-                    if (url.isBlank()) continue
-                    add(
-                        ProxyInsight(
-                            url = url,
-                            successes = item.optInt("successes").coerceAtLeast(0),
-                            failures = item.optInt("failures").coerceAtLeast(0),
-                            lastPingMs = item.optInt("lastPingMs", -1),
-                            lastCheckedAt = item.optLong("lastCheckedAt"),
-                            lastOkAt = item.optLong("lastOkAt"),
+                val root = JSONObject(content)
+                val proxiesArray = root.optJSONArray("proxies") ?: JSONArray()
+                val sourcesArray = root.optJSONArray("sources") ?: JSONArray()
+                val proxies = buildList {
+                    for (index in 0 until minOf(proxiesArray.length(), MAX_PROXY_INSIGHTS)) {
+                        val item = proxiesArray.optJSONObject(index) ?: continue
+                        val url = item.optString("url")
+                        if (url.isBlank()) continue
+                        add(
+                            ProxyInsight(
+                                url = url,
+                                successes = item.optInt("successes").coerceAtLeast(0),
+                                failures = item.optInt("failures").coerceAtLeast(0),
+                                lastPingMs = item.optInt("lastPingMs", -1),
+                                lastCheckedAt = item.optLong("lastCheckedAt"),
+                                lastOkAt = item.optLong("lastOkAt"),
+                            )
                         )
-                    )
+                    }
                 }
-            }
-            val sources = buildList {
-                for (index in 0 until minOf(sourcesArray.length(), 200)) {
-                    val item = sourcesArray.optJSONObject(index) ?: continue
-                    val name = item.optString("name")
-                    if (name.isBlank()) continue
-                    add(SourceInsight(name, item.optInt("lastCount"), item.optLong("lastScanAt")))
+                val sources = linkedMapOf<String, SourceInsight>()
+                run {
+                    for (index in 0 until minOf(sourcesArray.length(), 200)) {
+                        val item = sourcesArray.optJSONObject(index) ?: continue
+                        val storedName = item.optString("name")
+                        val name = BuiltInSourceIdentity.insightKey(storedName, storedName)
+                        if (name.isBlank()) continue
+                        val candidate =
+                            SourceInsight(name, item.optInt("lastCount"), item.optLong("lastScanAt"))
+                        val previous = sources[name]
+                        if (previous == null || candidate.lastScanAt >= previous.lastScanAt) {
+                            sources[name] = candidate
+                        }
+                    }
                 }
-            }
-            proxies to sources
+                proxies to sources.values.toList()
             }
         } catch (_: Exception) {
             emptyList<ProxyInsight>() to emptyList()
@@ -139,14 +147,10 @@ object InsightsStore {
                         .put("lastScanAt", item.lastScanAt)
                 )
             }
-            val target = file(context)
-            val temporary = File(target.parentFile, "$FILE_NAME.tmp")
-            temporary.writeText(JSONObject().put("proxies", proxyArray).put("sources", sourceArray).toString())
-            if (target.exists()) target.delete()
-            if (!temporary.renameTo(target)) {
-                temporary.copyTo(target, overwrite = true)
-                temporary.delete()
-            }
+            ProxyCache.atomicWrite(
+                file(context),
+                JSONObject().put("proxies", proxyArray).put("sources", sourceArray).toString(),
+            )
         } catch (_: Exception) {
         }
     }

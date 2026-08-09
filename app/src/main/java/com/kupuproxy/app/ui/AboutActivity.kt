@@ -39,7 +39,7 @@ class AboutActivity : AppCompatActivity() {
                                 IconButton(onClick = { finish() }) {
                                     Icon(
                                         Icons.AutoMirrored.Filled.ArrowBack,
-                                        contentDescription = null,
+                                        contentDescription = stringResource(R.string.back),
                                     )
                                 }
                             },

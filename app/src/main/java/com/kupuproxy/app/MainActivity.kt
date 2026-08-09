@@ -179,7 +179,7 @@ class MainActivity : AppCompatActivity() {
                 TopAppBar(
                     title = {
                         Column {
-                            Text("KupuProxy", fontWeight = FontWeight.Bold)
+                            Text(stringResource(R.string.app_name), fontWeight = FontWeight.Bold)
                             Text(
                                 stringResource(
                                     R.string.home_version_network,
@@ -287,7 +287,7 @@ class MainActivity : AppCompatActivity() {
                         CompactAction(
                             Modifier.weight(1f),
                             Icons.Default.Wifi,
-                            "Wi-Fi",
+                            stringResource(R.string.profile_wifi),
                             counts.wifi.toString(),
                         ) {
                             openSavedList(
@@ -298,7 +298,7 @@ class MainActivity : AppCompatActivity() {
                         CompactAction(
                             Modifier.weight(1f),
                             Icons.Default.Smartphone,
-                            "LTE",
+                            stringResource(R.string.profile_mobile),
                             counts.mobile.toString(),
                         ) {
                             openSavedList(
@@ -465,7 +465,10 @@ class MainActivity : AppCompatActivity() {
                             )
                         },
                     )
-                    AssistChip(onClick = {}, label = { Text("MTProto handshake") })
+                    AssistChip(
+                        onClick = {},
+                        label = { Text(stringResource(R.string.scan_mtproto_handshake)) },
+                    )
                 }
                 Button(onClick = onScan, modifier = Modifier.fillMaxWidth().height(52.dp)) {
                     Icon(Icons.Default.Search, contentDescription = null)
@@ -633,10 +636,10 @@ class MainActivity : AppCompatActivity() {
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                Text(
-                    "›",
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
@@ -975,31 +978,31 @@ class MainActivity : AppCompatActivity() {
         val sources = listOf(
             HomeSource(
                 "solispirit",
-                "SoliSpirit Mega",
+                stringResource(R.string.source_solispirit_title),
                 stringResource(R.string.home_source_solispirit_summary),
                 Icons.Default.Public,
             ),
             HomeSource(
                 "shablin_valid",
-                "Shablin latency",
+                stringResource(R.string.source_shablin_title),
                 stringResource(R.string.home_source_shablin_summary),
                 Icons.Default.Speed,
             ),
             HomeSource(
                 "dubblebyte",
-                "Dubblebyte free MTProto",
+                stringResource(R.string.source_dubblebyte_title),
                 stringResource(R.string.home_source_dubblebyte_summary),
                 Icons.Default.Public,
             ),
             HomeSource(
                 "surfboard",
-                "SurfboardV2ray",
+                stringResource(R.string.source_surfboard_title),
                 stringResource(R.string.home_source_surfboard_summary),
                 Icons.Default.Speed,
             ),
             HomeSource(
                 "argh94_scraper",
-                "Argh94 Scraper",
+                stringResource(R.string.source_argh94_title),
                 stringResource(R.string.home_source_argh94_summary),
                 Icons.Default.Search,
             ),

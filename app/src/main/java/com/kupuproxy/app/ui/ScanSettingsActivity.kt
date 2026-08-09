@@ -61,7 +61,10 @@ class ScanSettingsActivity : AppCompatActivity() {
                             title = { Text(stringResource(R.string.scan_settings_title)) },
                             navigationIcon = {
                                 IconButton(onClick = ::finish) {
-                                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.ArrowBack,
+                                        contentDescription = stringResource(R.string.back),
+                                    )
                                 }
                             },
                         )

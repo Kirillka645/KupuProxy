@@ -31,17 +31,15 @@ class ProxyAggregator(
     suspend fun collect(
         sources: List<ProxySource>,
         resolveDnsForDedupe: Boolean = false,
-        onSourceDone: (SourceResult) -> Unit = {}
+        onSourceDone: suspend (SourceResult) -> Unit = {}
     ): AggregateScanResult = withContext(Dispatchers.IO) {
         val sem = Semaphore(parallelism)
         val results = coroutineScope {
             sources.map { source ->
                 async {
-                    sem.withPermit {
-                        val r = fetchWithRetry(source)
-                        onSourceDone(r)
-                        r
-                    }
+                    val result = sem.withPermit { fetchWithRetry(source) }
+                    onSourceDone(result)
+                    result
                 }
             }.awaitAll()
         }

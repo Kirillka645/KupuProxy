@@ -5,10 +5,11 @@ import com.kupuproxy.app.data.source.KortCollectorStats
 import com.kupuproxy.app.domain.model.RawProxyEntry
 import com.kupuproxy.app.domain.model.SecretType
 import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
+import java.util.concurrent.ConcurrentHashMap
 import org.json.JSONArray
 import org.json.JSONObject
-
-import java.io.IOException
 
 /**
  * Долгосрочное локальное хранилище:
@@ -26,6 +27,7 @@ object ProxyCache {
     private const val KORT_SNAPSHOT = "kort_snapshot.json"
     private const val KORT_STATUS = "kort_status.json"
     private const val KORT_STALE_MS = 12L * 60 * 60 * 1000
+    private val fileLocks = ConcurrentHashMap<String, Any>()
 
     data class KortStatus(
         val upstreamTimestamp: String? = null,
@@ -45,14 +47,15 @@ object ProxyCache {
     fun migrateCleanup(context: Context) {
         try {
             val raw = File(cacheDir(context), CACHE_FILE)
-            if (!raw.exists()) return
-            val lines = raw.readLines().map { it.trim() }.filter { it.isNotBlank() }
+            val lines =
+                atomicReadText(raw)?.lineSequence()?.map { it.trim() }?.filter(String::isNotBlank)
+                    ?.toList() ?: return
             val cleaned = lines.filter { line ->
                 !line.contains("yagami", ignoreCase = true) &&
                     !line.contains("Yagami200", ignoreCase = true)
             }
             if (cleaned.size < lines.size) {
-                raw.writeText(cleaned.joinToString("\n"))
+                atomicWrite(raw, cleaned.joinToString("\n"))
             }
         } catch (_: IOException) {
         }
@@ -60,16 +63,23 @@ object ProxyCache {
 
     fun saveRawList(context: Context, proxies: List<String>) {
         try {
-            File(cacheDir(context), CACHE_FILE).writeText(proxies.joinToString("\n"))
+            atomicWrite(
+                File(cacheDir(context), CACHE_FILE),
+                proxies.asSequence().filter(String::isNotBlank).distinct().take(MAX_SCAN_PROXIES)
+                    .joinToString("\n"),
+            )
         } catch (_: Exception) {
         }
     }
 
     fun loadRawList(context: Context): List<String> {
         return try {
-            val file = File(cacheDir(context), CACHE_FILE)
-            if (!file.exists()) emptyList()
-            else file.readLines().map { it.trim() }.filter { it.isNotBlank() }
+            atomicReadText(File(cacheDir(context), CACHE_FILE))
+                ?.lineSequence()
+                ?.map { it.trim() }
+                ?.filter(String::isNotBlank)
+                ?.toList()
+                .orEmpty()
         } catch (_: Exception) {
             emptyList()
         }
@@ -97,11 +107,11 @@ object ProxyCache {
     }
 
     fun loadKortSnapshot(context: Context, region: String? = null): List<RawProxyEntry> = try {
-        val file = File(cacheDir(context), KORT_SNAPSHOT)
-        if (!file.exists()) {
+        val content = atomicReadText(File(cacheDir(context), KORT_SNAPSHOT))
+        if (content == null) {
             emptyList()
         } else {
-            val array = JSONArray(file.readText())
+            val array = JSONArray(content)
             buildList {
                 for (index in 0 until minOf(array.length(), 15_000)) {
                     val obj = array.optJSONObject(index) ?: continue
@@ -157,11 +167,11 @@ object ProxyCache {
     }
 
     fun loadKortStatus(context: Context): KortStatus = try {
-        val file = File(cacheDir(context), KORT_STATUS)
-        if (!file.exists()) {
+        val content = atomicReadText(File(cacheDir(context), KORT_STATUS))
+        if (content == null) {
             KortStatus()
         } else {
-            val obj = JSONObject(file.readText())
+            val obj = JSONObject(content)
             val regionsObj = obj.optJSONObject("regionalCounts") ?: JSONObject()
             val regions = buildMap {
                 regionsObj.keys().forEach { key -> put(key, regionsObj.optInt(key).coerceAtLeast(0)) }
@@ -179,26 +189,73 @@ object ProxyCache {
         KortStatus()
     }
 
-    private fun atomicWrite(target: File, content: String) {
-        val temporary = File(target.parentFile, "${target.name}.tmp")
-        val backup = File(target.parentFile, "${target.name}.bak")
-        try {
-            temporary.writeText(content)
-            if (backup.exists()) backup.delete()
-            if (target.exists() && !target.renameTo(backup)) {
+    internal fun atomicWrite(target: File, content: String) {
+        synchronized(lockFor(target)) {
+            val temporary = temporaryFile(target)
+            val backup = backupFile(target)
+            try {
+                target.parentFile?.mkdirs()
+                recoverAtomicFileLocked(target)
+                if (!target.exists() && backup.exists()) return
+
+                FileOutputStream(temporary, false).use { output ->
+                    output.write(content.toByteArray(Charsets.UTF_8))
+                    output.flush()
+                    output.fd.sync()
+                }
+                if (target.exists() && !target.renameTo(backup)) {
+                    temporary.delete()
+                    return
+                }
+                if (!temporary.renameTo(target)) {
+                    backup.renameTo(target)
+                    temporary.delete()
+                    return
+                }
+                backup.delete()
+            } catch (_: Exception) {
                 temporary.delete()
-                return
+                if (!target.exists()) backup.renameTo(target)
             }
-            if (!temporary.renameTo(target)) {
-                if (backup.exists()) backup.renameTo(target)
-                return
-            }
-            backup.delete()
-        } catch (_: Exception) {
-            temporary.delete()
-            if (!target.exists() && backup.exists()) backup.renameTo(target)
         }
     }
+
+    /** Restores a pre-crash backup before any reader treats the store as empty. */
+    internal fun recoverAtomicFile(target: File): File? =
+        synchronized(lockFor(target)) { recoverAtomicFileLocked(target) }
+
+    /** Reads a complete generation while excluding the two-rename writer window. */
+    internal fun atomicReadText(target: File): String? =
+        synchronized(lockFor(target)) {
+            recoverAtomicFileLocked(target)?.readText(Charsets.UTF_8)
+        }
+
+    private fun recoverAtomicFileLocked(target: File): File? {
+        val temporary = temporaryFile(target)
+        val backup = backupFile(target)
+        return when {
+            target.exists() -> {
+                backup.delete()
+                temporary.delete()
+                target
+            }
+            backup.exists() -> {
+                temporary.delete()
+                if (backup.renameTo(target)) target else backup
+            }
+            else -> {
+                temporary.delete()
+                null
+            }
+        }
+    }
+
+    private fun lockFor(target: File): Any =
+        fileLocks.computeIfAbsent(target.absoluteFile.normalize().path) { Any() }
+
+    private fun temporaryFile(target: File): File = File(target.parentFile, "${target.name}.tmp")
+
+    private fun backupFile(target: File): File = File(target.parentFile, "${target.name}.bak")
 
     fun loadSeedFromAssets(context: Context): List<String> {
         return try {
@@ -221,7 +278,7 @@ object ProxyCache {
             proxies.take(200).forEach { p ->
                 arr.put(JSONObject().put("url", p.url).put("ping", p.pingMs))
             }
-            File(cacheDir(context), name).writeText(arr.toString())
+            atomicWrite(File(cacheDir(context), name), arr.toString())
         } catch (_: Exception) {
         }
     }
@@ -229,9 +286,8 @@ object ProxyCache {
     fun loadWorking(context: Context, profile: NetworkProfileMode): List<ProxyWithPing> {
         val name = if (profile == NetworkProfileMode.MOBILE) LAST_MOBILE else LAST_WIFI
         return try {
-            val file = File(cacheDir(context), name)
-            if (!file.exists()) return emptyList()
-            val arr = JSONArray(file.readText())
+            val content = atomicReadText(File(cacheDir(context), name)) ?: return emptyList()
+            val arr = JSONArray(content)
             buildList {
                 for (i in 0 until arr.length()) {
                     val o = arr.getJSONObject(i)
@@ -245,9 +301,8 @@ object ProxyCache {
 
     fun getFavorites(context: Context): MutableSet<String> {
         return try {
-            val file = File(cacheDir(context), FAVORITES)
-            if (!file.exists()) return mutableSetOf()
-            val arr = JSONArray(file.readText())
+            val content = atomicReadText(File(cacheDir(context), FAVORITES)) ?: return mutableSetOf()
+            val arr = JSONArray(content)
             val set = mutableSetOf<String>()
             for (i in 0 until arr.length()) set.add(arr.getString(i))
             set
@@ -260,7 +315,7 @@ object ProxyCache {
         try {
             val arr = JSONArray()
             favorites.forEach { arr.put(it) }
-            File(cacheDir(context), FAVORITES).writeText(arr.toString())
+            atomicWrite(File(cacheDir(context), FAVORITES), arr.toString())
         } catch (_: Exception) {
         }
     }
