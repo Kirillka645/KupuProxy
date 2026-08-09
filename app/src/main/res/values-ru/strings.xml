@@ -28,6 +28,8 @@
     <string name="favorite">Избранное</string>
     <string name="connect">Подключить</string>
     <string name="back">Назад</string>
+    <string name="add">Добавить</string>
+    <string name="url_label">URL</string>
     <string name="connect_telegram">В Telegram</string>
     <string name="copy_top10">Топ-10</string>
     <string name="copy_all">Скопировать все</string>
@@ -121,6 +123,22 @@
     <string name="home_source_dubblebyte_summary">Дополнительный регулярно обновляемый список</string>
     <string name="home_source_surfboard_summary">Основной и предварительно проверенный списки</string>
     <string name="home_source_argh94_summary">Агрегация публичных каналов</string>
+    <string name="source_mtpro_xyz_title">MTPro.XYZ (hookzof)</string>
+    <string name="source_telegram_mega_title">Telegram · мега-источники</string>
+    <string name="source_solispirit_title">SoliSpirit Mega</string>
+    <string name="source_kort_verified_title">Kort · проверенные</string>
+    <string name="source_kort_ru_title">Kort · Россия</string>
+    <string name="source_kort_eu_title">Kort · Европа</string>
+    <string name="source_kort_us_title">Kort · США</string>
+    <string name="source_kort_asia_title">Kort · Азия</string>
+    <string name="source_surfboard_title">SurfboardV2ray</string>
+    <string name="source_shablin_title">Shablin · низкая задержка</string>
+    <string name="source_kupu_mirrored_title">Зеркала Kupu</string>
+    <string name="source_aliilapro_title">ALIILAPRO</string>
+    <string name="source_argh94_title">Сборщик Argh94</string>
+    <string name="source_grim1313_title">Список Grim1313</string>
+    <string name="source_dubblebyte_title">Dubblebyte · бесплатные MTProto</string>
+    <string name="source_pastebin_title">Pastebin (свой источник)</string>
 
     <string name="kort_never_updated">ещё не обновлялся</string>
     <string name="kort_minutes_ago">%1$d мин назад</string>
@@ -171,6 +189,7 @@
     <string name="scan_live_hint">Можно оставить экран открытым и подключаться к найденным адресам сразу.</string>
     <string name="scan_working_proxies">Рабочие прокси</string>
     <string name="scan_checked">Проверено %1$d / %2$d</string>
+    <string name="scan_found_count">%1$d ✓</string>
     <string name="scan_preparing_sources">Подготовка источников</string>
     <string name="scan_profile">Профиль: %1$s</string>
     <string name="scan_collecting">Сбор адресов</string>
@@ -180,6 +199,7 @@
     <string name="scan_source_progress">[%1$d/%2$d] %3$s · +%4$d</string>
     <string name="scan_no_addresses">Прокси не найдены. Проверьте сеть или используйте Seed.</string>
     <string name="scan_checking_addresses">Проверка %1$d адресов · %2$s</string>
+    <string name="scan_mtproto_handshake">Проверка MTProto</string>
     <string name="scan_found_progress">Проверка · найдено %1$d</string>
     <string name="scan_no_available">Нет доступных прокси</string>
     <string name="scan_done_available">Готово · %1$d доступных</string>
@@ -315,6 +335,8 @@
     <string name="qr_invalid">На изображении нет корректного QR-кода MTProto-прокси.</string>
     <string name="home_layout_title">Источники на главном экране</string>
     <string name="home_layout_summary">Выберите видимые карточки источников и измените их порядок</string>
+    <string name="home_layout_move_up">Переместить источник «%1$s» выше</string>
+    <string name="home_layout_move_down">Переместить источник «%1$s» ниже</string>
     <string name="favorite_monitor_title">Следить за избранными прокси</string>
     <string name="favorite_monitor_summary">Проверять избранное каждые 6 часов и предупреждать о неработающих прокси</string>
     <string name="favorite_monitor_channel">Состояние избранных прокси</string>

@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import com.kupuproxy.app.data.local.SourceSnapshotStore
 import com.kupuproxy.app.data.remote.HttpSupport
 import com.kupuproxy.app.data.source.KortCollectorSource
 import com.kupuproxy.app.data.source.RemoteManifestLoader
@@ -14,6 +15,7 @@ import com.kupuproxy.app.data.source.UserCustomSourceStore
 import com.kupuproxy.app.domain.aggregator.ProxyAggregator
 import com.kupuproxy.app.domain.model.SourceResult
 import com.kupuproxy.app.domain.parser.ProxyParser
+import com.kupuproxy.app.domain.source.BuiltInSourceIdentity
 import com.kupuproxy.app.domain.source.ProxySource
 import com.kupuproxy.app.domain.source.ProxySourceRegistry
 import java.io.File
@@ -23,6 +25,7 @@ import java.nio.charset.StandardCharsets
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CancellationException
@@ -51,8 +54,10 @@ object ProxyManager {
             val all = LinkedHashSet<String>()
             val hits = linkedMapOf<String, Int>()
             val mirrors = mutableListOf<String>()
+            val cachedFallbacks = ConcurrentHashMap<String, List<String>>()
 
             val registry = availableSources(context)
+            context?.let { SourceSnapshotStore.cleanup(it) }
             val done = AtomicInteger(0)
             val total = registry.size
             val aggregate =
@@ -63,26 +68,43 @@ object ProxyManager {
                         maxAttempts = 1,
                     )
                     .collect(registry) { result ->
-                    val count =
-                        when (result) {
-                            is SourceResult.Success -> result.entries.size
-                            is SourceResult.Failure -> 0
+                    val freshCount = (result as? SourceResult.Success)?.entries?.size ?: 0
+                    val cached =
+                        if (freshCount == 0 && context != null) {
+                            SourceSnapshotStore.load(context, result.sourceId)?.urls
+                        } else {
+                            null
                         }
+                    if (!cached.isNullOrEmpty()) cachedFallbacks[result.sourceId] = cached
+                    val count = if (freshCount > 0) freshCount else cached?.size ?: 0
                     val index = done.incrementAndGet()
-                    synchronized(hits) { hits[result.displayName] = count }
-                    if (result is SourceResult.Success) {
-                        synchronized(all) { all.addAll(result.entries.map { it.url }) }
-                        if (
-                            result.sourceId == KortCollectorSource.ID &&
-                                context != null &&
-                                result.entries.isNotEmpty()
-                        ) {
-                            ProxyCache.saveKortSnapshot(context, result.entries)
+                    val insightKey =
+                        BuiltInSourceIdentity.insightKey(result.sourceId, result.displayName)
+                    synchronized(hits) { hits[insightKey] = count }
+                    withContext(Dispatchers.Main) {
+                        onProgress(index, total, result.displayName, count)
+                    }
+                }
+            aggregate.sourceResults.forEach { result ->
+                val fresh = (result as? SourceResult.Success)?.entries.orEmpty()
+                if (fresh.isNotEmpty()) {
+                    val urls = fresh.map { it.url }
+                    all.addAll(urls)
+                    context?.let {
+                        SourceSnapshotStore.save(it, result.sourceId, urls)
+                        if (result.sourceId == KortCollectorSource.ID) {
+                            ProxyCache.saveKortSnapshot(it, fresh)
                         }
                     }
-                    onProgress(index, total, result.displayName, count)
+                } else if (context != null) {
+                    cachedFallbacks[result.sourceId]?.let { cached ->
+                        all.addAll(cached)
+                        hits[BuiltInSourceIdentity.insightKey(result.sourceId, result.displayName)] =
+                            cached.size
+                        mirrors += "${result.sourceId}:cache"
+                    }
                 }
-            all.addAll(aggregate.proxies.map { it.url })
+            }
             if (context != null) {
                 val kortEntries =
                     aggregate.sourceResults
@@ -179,10 +201,16 @@ object ProxyManager {
         /* Source network errors fall through to collector/cache/seed fallback below. */
         if (list.isNotEmpty()) {
             val unique = deduplicateProxies(list)
-            context?.let { ProxyCache.saveRawList(it, unique) }
+            context?.let {
+                ProxyCache.saveRawList(it, unique)
+                SourceSnapshotStore.save(it, source?.id ?: sourceId, unique)
+            }
             return unique
         }
         context?.let {
+            SourceSnapshotStore.load(it, source?.id ?: sourceId)?.urls?.let { cached ->
+                return cached
+            }
             if (sourceId == KortCollectorSource.ID || sourceId.startsWith("kort_")) {
                 val region =
                     sourceId.removePrefix("kort_").takeIf {

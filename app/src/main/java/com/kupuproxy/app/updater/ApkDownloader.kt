@@ -96,11 +96,24 @@ class ApkDownloader(
     }
 
     private fun validateRelease(release: GitHubRelease) {
-        require(release.apkUrl.startsWith("https://github.com/${BuildConfig.GITHUB_REPO}/releases/download/")) {
+        require(UpdateArtifactPolicy.isReleaseAssetUrlForTag(
+            release.apkUrl,
+            BuildConfig.GITHUB_REPO,
+            release.tagName,
+            release.apkName
+        )) {
             "APK должен быть из официального GitHub Releases"
         }
-        require(release.apkName.startsWith("KupuProxy-", true) && release.apkName.endsWith(".apk", true)) {
+        require(UpdateArtifactPolicy.isApkNameForTag(release.apkName, release.tagName)) {
             "Неожиданное имя APK"
+        }
+        release.sha256Url?.let { digestUrl ->
+            require(UpdateArtifactPolicy.isReleaseAssetUrlForTag(
+                digestUrl,
+                BuildConfig.GITHUB_REPO,
+                release.tagName,
+                "${release.apkName}.sha256"
+            )) { "SHA-256 должен быть из официального релиза" }
         }
         require(release.apkSize < 0 || release.apkSize in MIN_APK_BYTES..MAX_APK_BYTES) { "Некорректный размер APK" }
     }
@@ -127,8 +140,10 @@ class ApkDownloader(
         val archive = context.packageManager.getPackageArchiveInfo(file.absolutePath, flags)
             ?: error("Файл не является APK")
         require(archive.packageName == context.packageName) { "Неверный package name" }
-        val archiveVersion = archive.versionName.orEmpty().removePrefix("v")
-        require(archiveVersion == expectedVersion.removePrefix("v")) { "Версия APK не совпадает с релизом" }
+        val archiveVersion = archive.versionName.orEmpty()
+        require(UpdateArtifactPolicy.archiveVersionMatchesTag(archiveVersion, expectedVersion)) {
+            "Версия APK не совпадает с релизом"
+        }
 
         val installed = context.packageManager.getPackageInfo(context.packageName, flags)
         val archiveCerts = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -137,7 +152,7 @@ class ApkDownloader(
         val installedCerts = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             installed.signingInfo?.apkContentsSigners?.map { sha256(it.toByteArray()) }.orEmpty()
         } else installed.signatures?.map { sha256(it.toByteArray()) }.orEmpty()
-        require(archiveCerts.isNotEmpty() && archiveCerts.any(installedCerts::contains)) {
+        require(UpdateArtifactPolicy.hasMatchingSigner(archiveCerts, installedCerts)) {
             "APK подписан другим сертификатом"
         }
     }

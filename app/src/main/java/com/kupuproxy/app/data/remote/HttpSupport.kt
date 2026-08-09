@@ -12,6 +12,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -159,7 +160,8 @@ object HttpSupport {
         headers: Map<String, String> = emptyMap(),
         minUsefulBytes: Int = 16,
         perUrlTimeoutMs: Long = 7_000L,
-        overallTimeoutMs: Long = 12_000L
+        overallTimeoutMs: Long = 12_000L,
+        acceptBody: (String) -> Boolean = { true },
     ): Pair<String, String>? = coroutineScope {
         val candidates = urls.distinct()
         if (candidates.isEmpty()) return@coroutineScope null
@@ -169,7 +171,11 @@ object HttpSupport {
                 val result = withTimeoutOrNull(perUrlTimeoutMs) {
                     try {
                         val (body, _) = downloadText(client, url, headers = headers)
-                        body?.takeIf { it.length >= minUsefulBytes && !looksLikeBlockedPage(it) }?.let { it to url }
+                        body?.takeIf {
+                            it.length >= minUsefulBytes &&
+                                !looksLikeBlockedPage(it) &&
+                                acceptBody(it)
+                        }?.let { it to url }
                     } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (_: Exception) {
@@ -186,6 +192,7 @@ object HttpSupport {
             null
         }
         jobs.forEach { it.cancel() }
+        jobs.joinAll()
         results.close()
         winner
     }

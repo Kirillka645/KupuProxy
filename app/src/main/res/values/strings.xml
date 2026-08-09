@@ -28,6 +28,8 @@
     <string name="favorite">Favorite</string>
     <string name="connect">Connect</string>
     <string name="back">Back</string>
+    <string name="add">Add</string>
+    <string name="url_label">URL</string>
     <string name="connect_telegram">Open in Telegram</string>
     <string name="copy_top10">Top-10</string>
     <string name="copy_all">Copy all</string>
@@ -121,6 +123,22 @@
     <string name="home_source_dubblebyte_summary">Additional regularly updated list</string>
     <string name="home_source_surfboard_summary">Primary and pre-verified lists</string>
     <string name="home_source_argh94_summary">Aggregation of public channels</string>
+    <string name="source_mtpro_xyz_title">MTPro.XYZ (hookzof)</string>
+    <string name="source_telegram_mega_title">Telegram · mega sources</string>
+    <string name="source_solispirit_title">SoliSpirit Mega</string>
+    <string name="source_kort_verified_title">Kort · verified</string>
+    <string name="source_kort_ru_title">Kort · Russia</string>
+    <string name="source_kort_eu_title">Kort · Europe</string>
+    <string name="source_kort_us_title">Kort · USA</string>
+    <string name="source_kort_asia_title">Kort · Asia</string>
+    <string name="source_surfboard_title">SurfboardV2ray</string>
+    <string name="source_shablin_title">Shablin · low latency</string>
+    <string name="source_kupu_mirrored_title">Kupu mirrored feeds</string>
+    <string name="source_aliilapro_title">ALIILAPRO</string>
+    <string name="source_argh94_title">Argh94 Scraper</string>
+    <string name="source_grim1313_title">Grim1313 list</string>
+    <string name="source_dubblebyte_title">Dubblebyte · free MTProto</string>
+    <string name="source_pastebin_title">Pastebin (custom)</string>
 
     <string name="kort_never_updated">not updated yet</string>
     <string name="kort_minutes_ago">%1$d min ago</string>
@@ -171,6 +189,7 @@
     <string name="scan_live_hint">Keep this screen open and connect to discovered addresses immediately.</string>
     <string name="scan_working_proxies">Working proxies</string>
     <string name="scan_checked">Checked %1$d / %2$d</string>
+    <string name="scan_found_count">%1$d ✓</string>
     <string name="scan_preparing_sources">Preparing sources</string>
     <string name="scan_profile">Profile: %1$s</string>
     <string name="scan_collecting">Collecting addresses</string>
@@ -180,6 +199,7 @@
     <string name="scan_source_progress">[%1$d/%2$d] %3$s · +%4$d</string>
     <string name="scan_no_addresses">No proxies found. Check your network or use Seed.</string>
     <string name="scan_checking_addresses">Checking %1$d addresses · %2$s</string>
+    <string name="scan_mtproto_handshake">MTProto handshake</string>
     <string name="scan_found_progress">Checking · found %1$d</string>
     <string name="scan_no_available">No available proxies</string>
     <string name="scan_done_available">Done · %1$d available</string>
@@ -315,6 +335,8 @@
     <string name="qr_invalid">This image does not contain a valid MTProto proxy QR code.</string>
     <string name="home_layout_title">Home source layout</string>
     <string name="home_layout_summary">Choose visible source cards and change their order</string>
+    <string name="home_layout_move_up">Move %1$s up</string>
+    <string name="home_layout_move_down">Move %1$s down</string>
     <string name="favorite_monitor_title">Monitor favorite proxies</string>
     <string name="favorite_monitor_summary">Recheck favorites every 6 hours and warn when some stop working</string>
     <string name="favorite_monitor_channel">Favorite proxy status</string>

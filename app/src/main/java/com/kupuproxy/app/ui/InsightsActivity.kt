@@ -54,7 +54,10 @@ class InsightsActivity : AppCompatActivity() {
                             title = { Text(stringResource(R.string.insights_title)) },
                             navigationIcon = {
                                 IconButton(onClick = ::finish) {
-                                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.ArrowBack,
+                                        contentDescription = stringResource(R.string.back),
+                                    )
                                 }
                             },
                         )
@@ -93,10 +96,12 @@ class InsightsActivity : AppCompatActivity() {
 
     @Composable
     private fun SourceCard(item: SourceInsight) {
+        val sourceTitle =
+            sourceNameResource(item.name)?.let { stringResource(it) } ?: item.name
         Card(Modifier.fillMaxWidth()) {
             Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(item.name, fontWeight = FontWeight.SemiBold)
+                    Text(sourceTitle, fontWeight = FontWeight.SemiBold)
                     Text(stringResource(R.string.insights_source_count, item.lastCount))
                 }
             }
@@ -125,7 +130,10 @@ class InsightsActivity : AppCompatActivity() {
                         fontWeight = FontWeight.SemiBold,
                     )
                 }
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = stringResource(R.string.connect),
+                )
             }
         }
     }

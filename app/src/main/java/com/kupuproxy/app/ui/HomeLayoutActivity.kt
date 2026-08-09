@@ -50,7 +50,10 @@ class HomeLayoutActivity : AppCompatActivity() {
                             title = { Text(stringResource(R.string.home_layout_title)) },
                             navigationIcon = {
                                 IconButton(onClick = ::finish) {
-                                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.ArrowBack,
+                                        contentDescription = stringResource(R.string.back),
+                                    )
                                 }
                             },
                         )
@@ -60,8 +63,9 @@ class HomeLayoutActivity : AppCompatActivity() {
                         item { Text(stringResource(R.string.home_layout_summary), Modifier.padding(16.dp)) }
                         items(layout.order, key = { it }) { id ->
                             val index = layout.order.indexOf(id)
+                            val localizedSourceName = sourceName(id)
                             ListItem(
-                                headlineContent = { Text(sourceName(id)) },
+                                headlineContent = { Text(localizedSourceName) },
                                 leadingContent = {
                                     Switch(
                                         checked = id !in layout.hidden,
@@ -75,10 +79,24 @@ class HomeLayoutActivity : AppCompatActivity() {
                                 trailingContent = {
                                     Row {
                                         IconButton(enabled = index > 0, onClick = { move(index, index - 1) }) {
-                                            Icon(Icons.Default.ArrowUpward, contentDescription = null)
+                                            Icon(
+                                                Icons.Default.ArrowUpward,
+                                                contentDescription =
+                                                    stringResource(
+                                                        R.string.home_layout_move_up,
+                                                        localizedSourceName,
+                                                    ),
+                                            )
                                         }
                                         IconButton(enabled = index < layout.order.lastIndex, onClick = { move(index, index + 1) }) {
-                                            Icon(Icons.Default.ArrowDownward, contentDescription = null)
+                                            Icon(
+                                                Icons.Default.ArrowDownward,
+                                                contentDescription =
+                                                    stringResource(
+                                                        R.string.home_layout_move_down,
+                                                        localizedSourceName,
+                                                    ),
+                                            )
                                         }
                                     }
                                 },
@@ -104,11 +122,6 @@ class HomeLayoutActivity : AppCompatActivity() {
     }
 
     @androidx.compose.runtime.Composable
-    private fun sourceName(id: String): String = when (id) {
-        "solispirit" -> "SoliSpirit Mega"
-        "shablin_valid" -> "Shablin latency"
-        "dubblebyte" -> "Dubblebyte free MTProto"
-        "surfboard" -> "SurfboardV2ray"
-        else -> "Argh94 Scraper"
-    }
+    private fun sourceName(id: String): String =
+        sourceNameResource(id)?.let { stringResource(it) } ?: id
 }

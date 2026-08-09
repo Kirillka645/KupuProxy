@@ -42,7 +42,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
+import com.kupuproxy.app.domain.source.BuiltInSourceIdentity
 import com.kupuproxy.app.ui.components.ProxyResultCard
+import com.kupuproxy.app.ui.sourceNameResource
 import com.kupuproxy.app.ui.theme.KupuProxyTheme
 import com.kupuproxy.app.ui.theme.kupuBottomActions
 import com.kupuproxy.app.ui.theme.kupuSafeScreen
@@ -65,10 +67,11 @@ class ProxyLoadingActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         mode = intent.getStringExtra(MainActivity.EXTRA_MODE) ?: MainActivity.MODE_MEGA
-        sourceName =
-            intent.getStringExtra(MainActivity.EXTRA_SOURCE_NAME)
-                ?: getString(R.string.scan_default_source)
         sourceId = intent.getStringExtra(MainActivity.EXTRA_SOURCE_ID).orEmpty()
+        sourceName =
+            sourceNameResource(sourceId)?.let { getString(it) }
+                ?: intent.getStringExtra(MainActivity.EXTRA_SOURCE_NAME)
+                ?: getString(R.string.scan_default_source)
         profileMode =
             runCatching {
                     NetworkProfileMode.valueOf(
@@ -240,7 +243,7 @@ class ProxyLoadingActivity : AppCompatActivity() {
                         )
                     }
                     Text(
-                        "${state.found.size} ✓",
+                        stringResource(R.string.scan_found_count, state.found.size),
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold,
                     )
@@ -284,7 +287,13 @@ class ProxyLoadingActivity : AppCompatActivity() {
                                     message = getString(R.string.scan_loading_source, sourceName)
                                 )
                                 ProxyManager.fetchSourceById(sourceId, this@ProxyLoadingActivity)
-                                    .also { sourceHits = mapOf(sourceName to it.size) }
+                                    .also {
+                                        sourceHits =
+                                            mapOf(
+                                                BuiltInSourceIdentity.insightKey(sourceId, sourceName) to
+                                                    it.size
+                                            )
+                                    }
                             }
                             else -> {
                                 val result =
@@ -293,13 +302,15 @@ class ProxyLoadingActivity : AppCompatActivity() {
                                         total,
                                         name,
                                         count ->
+                                        val localizedName =
+                                            sourceNameResource(name)?.let { getString(it) } ?: name
                                         updateState(
                                             message =
                                                 getString(
                                                     R.string.scan_source_progress,
                                                     index,
                                                     total,
-                                                    name,
+                                                    localizedName,
                                                     count,
                                                 ),
                                             processed = index,
@@ -329,7 +340,7 @@ class ProxyLoadingActivity : AppCompatActivity() {
                                 prepared.size,
                                 settings.label,
                             ),
-                        phase = "MTProto handshake",
+                        phase = getString(R.string.scan_mtproto_handshake),
                         processed = 0,
                         total = prepared.size,
                         progress = 0f,

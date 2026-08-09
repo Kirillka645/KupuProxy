@@ -82,7 +82,10 @@ class UserSourcesActivity : AppCompatActivity() {
                     },
                     floatingActionButton = {
                         FloatingActionButton(onClick = { showAdd = true }) {
-                            Icon(Icons.Default.Add, contentDescription = null)
+                            Icon(
+                                Icons.Default.Add,
+                                contentDescription = stringResource(R.string.add),
+                            )
                         }
                     },
                 ) { padding ->
@@ -137,7 +140,7 @@ class UserSourcesActivity : AppCompatActivity() {
                                 OutlinedTextField(
                                     value = url,
                                     onValueChange = { url = it },
-                                    label = { Text("URL") },
+                                    label = { Text(stringResource(R.string.url_label)) },
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                             }

@@ -136,24 +136,23 @@ class UpdateChecker(
     }
 
     internal fun parseReleaseJson(json: JSONObject): GitHubRelease {
+        val tagName = json.getString("tag_name")
         val assets = json.optJSONArray("assets") ?: JSONArray()
         var apkUrl = ""
         var apkName = ""
         var apkSize = -1L
         var digest: String? = null
-        var digestUrl: String? = null
+        val checksumAssets = mutableListOf<Pair<String, String>>()
         for (index in 0 until assets.length()) {
             val asset = assets.optJSONObject(index) ?: continue
             val name = asset.optString("name", "")
             val url = asset.optString("browser_download_url", "")
-            if (url.isBlank() || !isExpectedReleaseAssetUrl(url)) continue
-            if (name.endsWith(".apk.sha256", ignoreCase = true)) {
-                digestUrl = url
+            if (url.isBlank() || !isExpectedReleaseAssetUrl(url, tagName, name)) continue
+            if (UpdateArtifactPolicy.isChecksumNameForTag(name, tagName)) {
+                checksumAssets += name.dropLast(".sha256".length) to url
                 continue
             }
-            if (!name.endsWith(".apk", ignoreCase = true) ||
-                !name.startsWith("KupuProxy-", ignoreCase = true) || apkUrl.isNotBlank()
-            ) continue
+            if (!UpdateArtifactPolicy.isApkNameForTag(name, tagName) || apkUrl.isNotBlank()) continue
             apkUrl = url
             apkName = name
             apkSize = asset.optLong("size", -1L)
@@ -163,14 +162,17 @@ class UpdateChecker(
         }
 
         return GitHubRelease(
-            tagName = json.getString("tag_name"),
+            tagName = tagName,
             changelog = json.optString("body", ""),
             apkUrl = apkUrl,
             htmlUrl = json.getString("html_url"),
             apkName = apkName,
             apkSize = apkSize,
             sha256 = digest,
-            sha256Url = digestUrl
+            sha256Url =
+                checksumAssets.firstOrNull { (baseName, _) ->
+                    baseName.equals(apkName, ignoreCase = true)
+                }?.second
         )
     }
 
@@ -179,15 +181,17 @@ class UpdateChecker(
         val apkUrl = json.getString("apk_url")
         val apkName = json.getString("apk_name")
         val releaseUrl = json.getString("release_url")
-        require(isExpectedReleaseAssetUrl(apkUrl)) { "Unexpected update APK URL" }
-        require(apkName.startsWith("KupuProxy-", true) && apkName.endsWith(".apk", true)) {
+        require(isExpectedReleaseAssetUrl(apkUrl, tagName, apkName)) { "Unexpected update APK URL" }
+        require(UpdateArtifactPolicy.isApkNameForTag(apkName, tagName)) {
             "Unexpected update APK name"
         }
         val digest = json.optString("sha256", "")
             .removePrefix("sha256:")
             .takeIf { it.matches(SHA256_REGEX) }
         val digestUrl = json.optString("sha256_url", "")
-            .takeIf { it.isNotBlank() && isExpectedReleaseAssetUrl(it) }
+            .takeIf {
+                it.isNotBlank() && isExpectedReleaseAssetUrl(it, tagName, "$apkName.sha256")
+            }
         require(digest != null || digestUrl != null) { "Update checksum is missing" }
         return GitHubRelease(
             tagName = tagName,
@@ -230,7 +234,8 @@ class UpdateChecker(
 
     private fun isInstallableRelease(release: GitHubRelease): Boolean =
         release.apkUrl.isNotBlank() &&
-            release.apkName.endsWith(".apk", ignoreCase = true) &&
+            UpdateArtifactPolicy.isApkNameForTag(release.apkName, release.tagName) &&
+            isExpectedReleaseAssetUrl(release.apkUrl, release.tagName, release.apkName) &&
             (release.sha256 != null || release.sha256Url != null)
 
     private fun getJsonObject(url: String): JSONObject = JSONObject(loadMetadata(url))
@@ -254,10 +259,13 @@ class UpdateChecker(
         }
     }
 
-    private fun isExpectedReleaseAssetUrl(url: String): Boolean {
-        val expected = "https://github.com/${BuildConfig.GITHUB_REPO}/releases/download/"
-        return url.startsWith(expected, ignoreCase = true)
-    }
+    private fun isExpectedReleaseAssetUrl(url: String, tagName: String, assetName: String): Boolean =
+        UpdateArtifactPolicy.isReleaseAssetUrlForTag(
+            url,
+            BuildConfig.GITHUB_REPO,
+            tagName,
+            assetName
+        )
 
     private fun Throwable.safeMessage(): String = when (this) {
         is IOException -> message ?: "Network error"

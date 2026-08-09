@@ -47,6 +47,11 @@ class LocalizationResourcesTest {
                 "Unknown keys in ${locale.languageTag}: ${catalog.keys - default.keys}",
                 default.keys.containsAll(catalog.keys),
             )
+            val blankKeys = catalog.filterValues(String::isBlank).keys
+            Assert.assertTrue(
+                "Blank translations hide English fallback in ${locale.languageTag}: $blankKeys",
+                blankKeys.isEmpty(),
+            )
         }
     }
 
@@ -69,6 +74,12 @@ class LocalizationResourcesTest {
                 "CheckFileActivity.kt",
                 "ui/SettingsActivity.kt",
                 "ui/UserSourcesActivity.kt",
+                "ui/AboutActivity.kt",
+                "ui/AppearanceActivity.kt",
+                "ui/HomeLayoutActivity.kt",
+                "ui/InsightsActivity.kt",
+                "ui/QrToolsActivity.kt",
+                "ui/ScanSettingsActivity.kt",
                 "ui/components/ProxyUiComponents.kt",
             )
         val hardcodedCyrillic = Regex("\\\"[^\\\"\\n]*[А-Яа-яЁё][^\\\"\\n]*\\\"")
@@ -79,6 +90,68 @@ class LocalizationResourcesTest {
                 hardcodedCyrillic.containsMatchIn(source),
             )
         }
+    }
+
+    @Test
+    fun composeScreensUseResourcesForStaticLabels() {
+        val sourceRoot = File(projectDir, "app/src/main/java/com/kupuproxy/app")
+        val files =
+            listOf(
+                "MainActivity.kt",
+                "ProxyLoadingActivity.kt",
+                "ui/HomeLayoutActivity.kt",
+                "ui/InsightsActivity.kt",
+                "ui/QrToolsActivity.kt",
+                "ui/ScanSettingsActivity.kt",
+                "ui/SettingsActivity.kt",
+                "ui/UserSourcesActivity.kt",
+            )
+        val directText = Regex("""(?<![A-Za-z])Text\s*\(\s*"[^"\n]+""")
+        val forbiddenLabels =
+            listOf(
+                "\"MTProto handshake\"",
+                "\"SoliSpirit Mega\"",
+                "\"Shablin latency\"",
+                "\"Dubblebyte free MTProto\"",
+                "\"SurfboardV2ray\"",
+                "\"Argh94 Scraper\"",
+            )
+
+        files.forEach { relativePath ->
+            val source = File(sourceRoot, relativePath).readText()
+            Assert.assertNull(
+                "Direct Text literal in $relativePath",
+                directText.find(source),
+            )
+            forbiddenLabels.forEach { label ->
+                Assert.assertFalse(
+                    "Hardcoded label $label in $relativePath",
+                    source.contains(label),
+                )
+            }
+        }
+    }
+
+    @Test
+    fun englishAndRussianCatalogsContainLocalizedScanAndSourceLabels() {
+        val english = readStrings(File(resDir, "values/strings.xml"))
+        val russian = readStrings(File(resDir, "values-ru/strings.xml"))
+        val required =
+            setOf(
+                "scan_mtproto_handshake",
+                "scan_found_count",
+                "source_telegram_mega_title",
+                "source_solispirit_title",
+                "source_shablin_title",
+                "source_dubblebyte_title",
+                "source_surfboard_title",
+                "source_argh94_title",
+                "home_layout_move_up",
+                "home_layout_move_down",
+            )
+
+        Assert.assertTrue("Missing English labels: ${required - english.keys}", english.keys.containsAll(required))
+        Assert.assertTrue("Missing Russian labels: ${required - russian.keys}", russian.keys.containsAll(required))
     }
 
     private fun parseConfig(): List<String> {

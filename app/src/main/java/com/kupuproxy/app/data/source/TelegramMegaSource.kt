@@ -6,19 +6,23 @@ import com.kupuproxy.app.domain.model.RawProxyEntry
 import com.kupuproxy.app.domain.model.SourceKind
 import com.kupuproxy.app.domain.parser.ProxyParser
 import com.kupuproxy.app.domain.source.ProxySource
+import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
 
 /**
- * Быстрый «TG mega»-источник:
- * 1) параллельно тянет GitHub-скрейпы TG-каналов (CDN) — основной объём 50–300+;
- * 2) параллельно race-зеркала по популярным каналам (если t.me мёртв — jina/rsshub);
- * 3) полный проход по каналам без ранней остановки; дедупликация выполняется по endpoint.
+ * Aggregates independent Telegram proxy feeds under a deadline short enough for
+ * ProxyAggregator's per-source budget. A failed mirror or phase never discards
+ * useful entries returned by the other phases.
  */
 class TelegramMegaSource(override val enabledByDefault: Boolean = true) : ProxySource {
 
@@ -27,87 +31,201 @@ class TelegramMegaSource(override val enabledByDefault: Boolean = true) : ProxyS
     override val kind: SourceKind = SourceKind.TELEGRAM_CHANNEL
 
     override suspend fun fetch(client: OkHttpClient): List<RawProxyEntry> {
-        val fast = HttpSupport.fastClient()
-        val bag = LinkedHashMap<String, RawProxyEntry>()
-
-        fun add(list: List<RawProxyEntry>) {
-            for (e in list) {
-                val key = "${e.host.lowercase()}:${e.port}:${e.secret.lowercase()}"
-                bag.putIfAbsent(key, e.copy(sourceId = id, sourceName = displayName))
-            }
-        }
-
-        // --- Phase 0: MTPro.XYZ / hookzof (~50 live proxies, no t.me) ---
-        try {
-            add(MtproXyzSource().fetch(client))
-        } catch (_: Exception) {}
-
-        // --- Phase 1: scraped lists from GitHub (no Telegram needed) ---
-        val scrapeUrls = TelegramBypass.telegramScrapedListUrls()
-        val scraped =
-            HttpSupport.downloadAllParallel(
-                client = client,
-                urls = scrapeUrls,
-                headers = TelegramBypass.browserHeaders(),
-                minUsefulBytes = 40,
-                maxParallel = 8,
-                perUrlTimeoutMs = 9_000L,
+        val boundedClient = boundedClient(client)
+        val phaseResults =
+            collectPhaseResults(
+                phaseTimeoutMs = PHASE_TIMEOUT_MS,
+                phases =
+                    listOf(
+                        { MtproXyzSource().fetch(boundedClient) },
+                        { fetchScrapedLists(boundedClient) },
+                        {
+                            fetchChannelsParallel(
+                                boundedClient,
+                                TelegramBypass.POPULAR_CHANNELS,
+                            )
+                        },
+                    ),
             )
-        for ((body, _) in scraped) {
-            add(ProxyParser.parse(normalizeBody(body), id, displayName))
-        }
 
-        // --- Phase 2: all configured live channel mirrors ---
-        add(fetchChannelsParallel(fast, TelegramBypass.POPULAR_CHANNELS))
-
-        return bag.values.toList()
+        return mergeEntries(id, displayName, phaseResults)
     }
+
+    /**
+     * Each repository is exposed through three equivalent CDNs. Racing each
+     * mirror group avoids downloading duplicate copies and keeps this phase
+     * within one network round-trip.
+     */
+    private suspend fun fetchScrapedLists(client: OkHttpClient): List<RawProxyEntry> =
+        collectTaskResults(
+            timeoutMs = PARTIAL_PHASE_TIMEOUT_MS,
+            tasks =
+                TelegramBypass.telegramScrapedListUrls()
+                    .chunked(SCRAPED_MIRRORS_PER_LIST)
+                    .map { mirrorUrls ->
+                        suspend {
+                            val raced =
+                                HttpSupport.downloadRace(
+                                    client = client,
+                                    urls = mirrorUrls,
+                                    headers = TelegramBypass.browserHeaders(),
+                                    minUsefulBytes = 40,
+                                    perUrlTimeoutMs = MIRROR_TIMEOUT_MS,
+                                    overallTimeoutMs = MIRROR_RACE_TIMEOUT_MS,
+                                    acceptBody = { body ->
+                                        parseSafely(body, displayName).isNotEmpty()
+                                    },
+                                )
+                            raced?.let { parseSafely(it.first, displayName) }.orEmpty()
+                        }
+                    },
+        )
 
     private suspend fun fetchChannelsParallel(
         client: OkHttpClient,
         channels: List<String>,
-    ): List<RawProxyEntry> = coroutineScope {
-        val bag = LinkedHashMap<String, RawProxyEntry>()
-        val sem = Semaphore(4)
-        channels
-            .map { ch ->
-                async {
-                    sem.withPermit {
-                        withTimeoutOrNull(11_000L) {
-                                fetchOneChannel(client, ch)
+    ): List<RawProxyEntry> =
+        supervisorScope {
+            val semaphore = Semaphore(CHANNEL_PARALLELISM)
+            collectTaskResults(
+                timeoutMs = PARTIAL_PHASE_TIMEOUT_MS,
+                tasks =
+                    channels.map { channel ->
+                        suspend {
+                            semaphore.withPermit {
+                                try {
+                                    withTimeoutOrNull(CHANNEL_TIMEOUT_MS) {
+                                        fetchOneChannel(client, channel)
+                                    }.orEmpty()
+                                } catch (cancelled: CancellationException) {
+                                    throw cancelled
+                                } catch (_: Exception) {
+                                    emptyList()
+                                }
                             }
-                            .orEmpty()
-                    }
-                }
-            }
-            .awaitAll()
-            .forEach { list ->
-                for (e in list) {
-                    val key = "${e.host.lowercase()}:${e.port}:${e.secret.lowercase()}"
-                    bag.putIfAbsent(key, e)
-                }
-            }
-        bag.values.toList()
-    }
+                        }
+                    },
+            )
+        }
 
     private suspend fun fetchOneChannel(
         client: OkHttpClient,
         channel: String,
     ): List<RawProxyEntry> {
-        val urls = TelegramBypass.channelFastUrls(channel)
         val raced =
             HttpSupport.downloadRace(
                 client = client,
-                urls = urls,
+                urls = TelegramBypass.channelFastUrls(channel),
                 headers = TelegramBypass.browserHeaders(),
                 minUsefulBytes = 80,
-                perUrlTimeoutMs = 6_500L,
-                overallTimeoutMs = 9_000L,
+                perUrlTimeoutMs = MIRROR_TIMEOUT_MS,
+                overallTimeoutMs = MIRROR_RACE_TIMEOUT_MS,
+                acceptBody = { body ->
+                    parseSafely(body, "TG @$channel").isNotEmpty()
+                },
             ) ?: return emptyList()
-        return ProxyParser.parse(normalizeBody(raced.first), id, "TG @$channel")
+        return parseSafely(raced.first, "TG @$channel")
     }
 
+    private fun parseSafely(body: String, sourceName: String): List<RawProxyEntry> =
+        try {
+            ProxyParser.parse(normalizeBody(body), id, sourceName)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            emptyList()
+        }
+
+    private fun boundedClient(client: OkHttpClient): OkHttpClient =
+        client.newBuilder()
+            .connectTimeout(CONNECT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            .readTimeout(READ_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            .writeTimeout(CONNECT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            .callTimeout(HTTP_CALL_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            .build()
+
     companion object {
+        private const val PHASE_TIMEOUT_MS = 11_000L
+        private const val PARTIAL_PHASE_TIMEOUT_MS = 10_700L
+        private const val CONNECT_TIMEOUT_MS = 4_000L
+        private const val READ_TIMEOUT_MS = 4_750L
+        private const val HTTP_CALL_TIMEOUT_MS = 5_000L
+        private const val MIRROR_TIMEOUT_MS = 4_750L
+        private const val MIRROR_RACE_TIMEOUT_MS = 5_100L
+        private const val CHANNEL_TIMEOUT_MS = 5_250L
+        private const val CHANNEL_PARALLELISM = 6
+        private const val SCRAPED_MIRRORS_PER_LIST = 3
+
+        /** Returns completed task results even when slower siblings miss the deadline. */
+        internal suspend fun collectTaskResults(
+            timeoutMs: Long,
+            tasks: List<suspend () -> List<RawProxyEntry>>,
+        ): List<RawProxyEntry> =
+            supervisorScope {
+                if (tasks.isEmpty()) return@supervisorScope emptyList()
+                val completed = Channel<List<RawProxyEntry>>(tasks.size)
+                val jobs =
+                    tasks.map { task ->
+                        launch {
+                            val result =
+                                try {
+                                    task()
+                                } catch (cancelled: CancellationException) {
+                                    throw cancelled
+                                } catch (_: Exception) {
+                                    emptyList()
+                                }
+                            completed.send(result)
+                        }
+                    }
+                val collected = mutableListOf<RawProxyEntry>()
+                withTimeoutOrNull(timeoutMs) {
+                    repeat(tasks.size) { collected += completed.receive() }
+                }
+                jobs.forEach { it.cancel() }
+                jobs.joinAll()
+                completed.close()
+                collected
+            }
+
+        /** Runs all phases at once while preserving successful sibling results. */
+        internal suspend fun collectPhaseResults(
+            phaseTimeoutMs: Long,
+            phases: List<suspend () -> List<RawProxyEntry>>,
+        ): List<List<RawProxyEntry>> =
+            supervisorScope {
+                phases
+                    .map { phase ->
+                        async {
+                            try {
+                                withTimeoutOrNull(phaseTimeoutMs) { phase() }.orEmpty()
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (_: Exception) {
+                                emptyList()
+                            }
+                        }
+                    }
+                    .awaitAll()
+            }
+
+        /** Deduplication happens after concurrent work, so no shared map is mutated by workers. */
+        internal fun mergeEntries(
+            sourceId: String,
+            sourceName: String,
+            phaseResults: List<List<RawProxyEntry>>,
+        ): List<RawProxyEntry> {
+            val unique = LinkedHashMap<String, RawProxyEntry>()
+            for (entry in phaseResults.flatten()) {
+                val key = "${entry.host.lowercase()}:${entry.port}:${entry.secret.lowercase()}"
+                unique.putIfAbsent(
+                    key,
+                    entry.copy(sourceId = sourceId, sourceName = sourceName),
+                )
+            }
+            return unique.values.toList()
+        }
+
         fun normalizeBody(body: String): String {
             return body
                 .replace("\\u0026", "&")

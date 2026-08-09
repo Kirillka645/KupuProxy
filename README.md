@@ -11,7 +11,7 @@ KupuProxy — Android-приложение для поиска, проверки
 >
 > Telegram-канал: [@KupuProxy](https://t.me/KupuProxy)
 
-## Возможности 1.4.0
+## Возможности 1.4.0.1
 
 - четыре режима проверки: быстрый, сбалансированный, полный и пользовательский;
 - полный скан до 15 000 уникальных адресов;
@@ -27,6 +27,8 @@ KupuProxy — Android-приложение для поиска, проверки
 - офлайн seed, локальный кэш, избранное и экспорт списков;
 - пользовательские HTTPS-источники с защитой от SSRF;
 - проверяемые обновления через GitHub Releases и SHA-256.
+
+В 1.4.0.1 ускорен сбор Telegram-источников: зеркала проверяются параллельно, учитываются только ответы с валидными прокси, а уже полученные результаты не теряются из-за медленного канала. Добавлены отдельные 72-часовые снимки источников, восстановление локальных данных после прерванной записи, полный английский fallback для непереведённых строк и более строгая проверка тега, имени APK, SHA-256 и сертификата обновления.
 
 ## Как пользоваться
 
@@ -78,7 +80,7 @@ work/       фоновые проверки и обновления
 
 ## English
 
-KupuProxy is an Android app for collecting and independently verifying Telegram MTProto proxies. Version 1.4.0 adds scan depth presets, reliability history, source statistics, favorite monitoring, QR import/export, home screen customization, personal themes, and checks of up to 15,000 unique addresses.
+KupuProxy is an Android app for collecting and independently verifying Telegram MTProto proxies. Version 1.4.0.1 speeds up Telegram source collection, preserves partial and cached source results, prevents blank localized labels, makes local state writes crash-safe, and hardens signed in-app updates. It also includes scan depth presets, reliability history, source statistics, favorite monitoring, QR import/export, personal themes, and checks of up to 15,000 unique addresses.
 
 Download the APK from [GitHub Releases](https://github.com/Kirillka645/KupuProxy/releases/latest). No advertising SDKs, analytics, or trackers are included.
 
