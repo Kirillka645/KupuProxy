@@ -163,26 +163,26 @@ jobs:
           - os: windows-latest
             name: windows-msi
             task: :desktop:packageMsi
-            out: "desktop/build/compose/binaries/main/msi/*.msi"
+            ext: msi
             # Установщик требует WiX, которого на образе может не быть. Отсутствие .msi
             # не должно блокировать публикацию релиза с остальными файлами.
             continue-on-error: true
           - os: windows-latest
             name: windows-portable
             task: :desktop:createDistributable
-            out: "desktop/build/compose/binaries/main/app/KupuProxy/**"
+            ext: dir
           - os: ubuntu-latest
             name: linux-deb
             task: :desktop:packageDeb
-            out: "desktop/build/compose/binaries/main/deb/*.deb"
-          - os: ubuntu-22.04
+            ext: deb
+          - os: ubuntu-latest
             name: linux-tar
             task: :desktop:packageDistributionForCurrentOS
-            out: "desktop/build/compose/binaries/main/tar/*.tar.gz"
+            ext: tar.gz
           - os: macos-latest
             name: macos-dmg
             task: :desktop:packageDmg
-            out: "desktop/build/compose/binaries/main/dmg/*.dmg"
+            ext: dmg
 
     steps:
       - uses: actions/checkout@v7
@@ -232,27 +232,39 @@ jobs:
           ./gradlew --no-daemon ${{ matrix.task }}
 
       # jpackage пишет подробности сбоя в файл логов и не печатает их в stdout,
-      # из-за чего в CI причина падения не видна. Дублируем лог в консоль.
-      - name: Показать логи jpackage при сбое
+      # поэтому причина падения в CI не видна. Дублируем и логи, и содержимое
+      # каталога сборки — по одному списку файлов причина тоже читается.
+      - name: Диагностика сбоя jpackage
         if: failure() && runner.os == 'Windows'
         shell: pwsh
         run: |
-          Get-ChildItem desktop\build\compose\logs -Recurse -Filter "*.txt" -ErrorAction SilentlyContinue |
-            ForEach-Object {
-              Write-Host "=== $($_.FullName) ==="
-              Get-Content $_.FullName -Tail 60
+          Write-Host "=== содержимое desktop\build\compose ==="
+          Get-ChildItem desktop\build\compose -Recurse -File -ErrorAction SilentlyContinue |
+            Select-Object -First 40 -ExpandProperty FullName
+          Write-Host "=== логи jpackage ==="
+          $logs = Get-ChildItem desktop\build\compose\logs -Recurse -File -ErrorAction SilentlyContinue
+          if ($logs) {
+            foreach ($f in $logs) {
+              Write-Host "--- $($f.FullName) ---"
+              Get-Content $f.FullName -Tail 60
             }
+          } else {
+            Write-Host "логи jpackage отсутствуют"
+          }
+          Write-Host "=== версия JDK и jpackage ==="
+          Write-Host (java -version 2>&1)
+          Write-Host ("jdk.jpackage: " + (& "$env:JAVA_HOME\bin\jpackage.exe" --version 2>&1))
 
       - name: Собрать ассеты
         shell: bash
         env:
           NAME: ${{ matrix.name }}
-          OUT: ${{ matrix.out }}
+          EXT: ${{ matrix.ext }}
           VERSION: ${{ needs.verify.outputs.version }}
         run: |
           set -euo pipefail
           mkdir -p staged
-          if [ "$NAME" = "windows-portable" ]; then
+          if [ "$EXT" = "dir" ]; then
             # Каталог с portable-сборкой создаётся Compose; имя может отличаться
             # от ожидаемого, поэтому ищем, а не обращаемся по фиксированному пути.
             appdir=$(find desktop/build/compose/binaries/main -maxdepth 1 -type d -name 'KupuProxy*' | head -n1)
@@ -264,11 +276,12 @@ jobs:
             echo "собираем portable из $appdir"
             zip -qr "staged/KupuProxy-Desktop-${VERSION}-windows-x64.zip" "$appdir"
           else
-            # Точный путь к выходу jpackage различается между версиями Compose
-            # (deb/ vs app/, .tar.gz vs .tgz), поэтому ищем по расширению.
-            file=$(find desktop/build/compose/binaries -type f \( -name '*.deb' -o -name '*.tar.gz' -o -name '*.msi' \) | head -n1)
+            # Ищем строго по своему расширению. Общий поиск по нескольким
+            # расширениям приводил к тому, что задача .tar.gz копировала .deb,
+            # и после слияния артефактов оставался один файл.
+            file=$(find desktop/build/compose/binaries -type f -name "*.$EXT" | head -n1)
             if [ -z "$file" ]; then
-              echo "::error::Артефакт $OUT не найден. Есть:"
+              echo "::error::Артефакт .$EXT не найден. Есть:"
               find desktop/build/compose/binaries -type f | head -n40 || true
               exit 1
             fi

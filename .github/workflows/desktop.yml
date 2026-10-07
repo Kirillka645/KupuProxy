@@ -125,15 +125,23 @@ jobs:
           ./gradlew --no-daemon ${{ matrix.task }}
 
       # Причина сбоя jpackage пишется в файл и не попадает в stdout.
-      - name: Показать логи jpackage при сбое
+      - name: Диагностика сбоя jpackage
         if: failure() && runner.os == 'Windows'
         shell: pwsh
         run: |
-          Get-ChildItem desktop\build\compose\logs -Recurse -Filter "*.txt" -ErrorAction SilentlyContinue |
-            ForEach-Object {
-              Write-Host "=== $($_.FullName) ==="
-              Get-Content $_.FullName -Tail 60
+          Write-Host "=== содержимое desktop\build\compose ==="
+          Get-ChildItem desktop\build\compose -Recurse -File -ErrorAction SilentlyContinue |
+            Select-Object -First 40 -ExpandProperty FullName
+          Write-Host "=== логи jpackage ==="
+          $logs = Get-ChildItem desktop\build\compose\logs -Recurse -File -ErrorAction SilentlyContinue
+          if ($logs) {
+            foreach ($f in $logs) {
+              Write-Host "--- $($f.FullName) ---"
+              Get-Content $f.FullName -Tail 60
             }
+          } else {
+            Write-Host "логи jpackage отсутствуют"
+          }
 
       # Каталог выхода jpackage различается между версиями Compose (deb/ vs app/,
       # .tar.gz vs .tgz), поэтому ищем артефакт по расширению, а не по жёсткому пути.
