@@ -39,6 +39,9 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.check.outputs.version }}
+      # Контекст secrets недоступен в условиях уровня job, поэтому наличие ключа
+      # подписи проверяем здесь, в шаге, и передаём результат через outputs.
+      has_keystore: ${{ steps.keys.outputs.present }}
     steps:
       - uses: actions/checkout@v7
 
@@ -56,13 +59,27 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
+      - name: Проверить наличие ключа подписи
+        id: keys
+        env:
+          KEYSTORE_B64: ${{ secrets.KUPU_RELEASE_KEYSTORE }}
+        run: |
+          set -euo pipefail
+          if [ -n "${KEYSTORE_B64:-}" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+            echo "Ключ подписи задан — APK будет собрана в CI"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::KUPU_RELEASE_KEYSTORE не задан: APK собираться не будет, её нужно приложить к релизу вручную"
+          fi
+
   apk:
     name: Собрать Android APK
     needs: verify
     runs-on: ubuntu-latest
     # Публичные сборки подписаны ключом разработчика. Без секрета шаг пропускается:
     # APK придётся приложить к готовому релизу вручную.
-    if: ${{ secrets.KUPU_RELEASE_KEYSTORE != '' }}
+    if: ${{ needs.verify.outputs.has_keystore == 'true' }}
     steps:
       - uses: actions/checkout@v7
 
@@ -146,6 +163,9 @@ jobs:
             name: windows-msi
             task: :desktop:packageMsi
             out: "desktop/build/compose/binaries/main/msi/*.msi"
+            # Установщик требует WiX, которого на образе может не быть. Отсутствие .msi
+            # не должно блокировать публикацию релиза с остальными файлами.
+            continue-on-error: true
           - os: windows-latest
             name: windows-portable
             task: :desktop:createDistributable
@@ -175,19 +195,31 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v6
 
-      # jpackage собирает .msi только при наличии WiX Toolset 3.x.
-      - name: Проверить WiX для сборки .msi
+      # jpackage собирает .msi только при наличии WiX Toolset 3.x — на образе его может не быть.
+      - name: Установить WiX для сборки .msi
         if: endsWith(matrix.name, 'msi')
         shell: pwsh
         run: |
-          if (-not (Get-Command light.exe -ErrorAction SilentlyContinue)) {
-            $wix = Get-ChildItem "${env:ProgramFiles(x86)}\WiX Toolset*\*\bin\light.exe" -ErrorAction SilentlyContinue
-            if ($wix) {
-              Add-Content -Path $env:GITHUB_PATH -Value (Split-Path -Parent $wix[0].FullName)
-              Write-Host "WiX найден"
-            } else {
-              Write-Host "::warning::WiX не найден — сборка .msi упадёт"
-            }
+          if (Get-Command light.exe -ErrorAction SilentlyContinue) {
+            Write-Host "WiX уже доступен"
+            exit 0
+          }
+          $wix = Get-ChildItem "${env:ProgramFiles(x86)}\WiX Toolset*\*\bin\light.exe" -ErrorAction SilentlyContinue
+          if ($wix) {
+            Add-Content -Path $env:GITHUB_PATH -Value (Split-Path -Parent $wix[0].FullName)
+            Write-Host "WiX найден в $(Split-Path -Parent $wix[0].FullName)"
+            exit 0
+          }
+          Write-Host "::group::Устанавливаем WiX Toolset"
+          choco install wixtoolset --yes --no-progress --limit-output
+          choco install wixtoolset --version=3.11.2 --yes --no-progress --limit-output
+          Write-Host "::endgroup::"
+          $after = Get-ChildItem "C:\Program Files (x86)\WiX Toolset*\bin\light.exe" -ErrorAction SilentlyContinue
+          if ($after) {
+            Add-Content -Path $env:GITHUB_PATH -Value (Split-Path -Parent $after[0].FullName)
+            Write-Host "WiX установлен"
+          } else {
+            Write-Host "::warning::WiX установить не удалось — .msi будет пропущен"
           }
 
       - name: Собрать
@@ -223,6 +255,10 @@ jobs:
     name: Опубликовать релиз
     needs: [verify, desktop, apk]
     runs-on: ubuntu-latest
+    # apk может быть пропущен (нет ключа подписи), отдельные платформы могут не собраться.
+    # Публикуем то, что собралось; полноту проверяет шаг «Проверить состав» — при слишком
+    # малом числе ассетов релиз не создаётся. Отмену пользователем не переигрываем.
+    if: ${{ !cancelled() && needs.verify.result == 'success' }}
     steps:
       - uses: actions/checkout@v7
 
@@ -237,9 +273,12 @@ jobs:
         run: |
           set -euo pipefail
           find dist -type f -printf '%p (%s байт)\n'
-          echo "всего файлов: $(find dist -type f | wc -l)"
-          if [ "$(find dist -type f | wc -l)" -lt 3 ]; then
-            echo "::error::Слишком мало ассетов — сборка платформ, вероятно, упала"
+          count=$(find dist -type f | wc -l)
+          echo "всего файлов: $count"
+          # Минимум — APK-пара или хотя бы две десктопные сборки. Ниже этого релиз
+          # не создаём: пустой или обрезанный релиз хуже, чем явная ошибка.
+          if [ "$count" -lt 2 ]; then
+            echo "::error::Собрано слишком мало ассетов ($count) — публикация отменена"
             exit 1
           fi
 

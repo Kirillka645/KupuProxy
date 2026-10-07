@@ -58,6 +58,7 @@ jobs:
             name: Windows (.msi)
             task: :desktop:packageMsi
             artifact: "desktop/build/compose/binaries/main/msi/*.msi"
+            continue-on-error: true
           - os: windows-latest
             name: Windows (portable)
             task: :desktop:createDistributable
@@ -88,24 +89,31 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
-      # Сборка .msi в jpackage требует WiX Toolset 3.x. На образах GitHub он обычно есть,
-      # но ставим явно, чтобы шаг не зависел от состава образа.
-      - name: Ensure WiX for MSI packaging
-        if: runner.os == 'Windows' && endsWith(matrix.artifact, '.msi')
+      # Сборка .msi в jpackage требует WiX Toolset 3.x, которого на образе может не быть.
+      # Ставим его; если не выйдет, .msi пропустим, а остальные форматы соберутся.
+      - name: Установить WiX для сборки .msi
+        if: runner.os == 'Windows' && endsWith(matrix.name, '.msi')
         shell: pwsh
         run: |
-          $wix = Get-Command light.exe -ErrorAction SilentlyContinue
-          if (-not $wix) {
-            $candidates = Get-ChildItem "${env:ProgramFiles(x86)}\WiX Toolset*\*\bin\light.exe" -ErrorAction SilentlyContinue
-            if ($candidates) {
-              $bin = Split-Path -Parent $candidates[0].FullName
-              Add-Content -Path $env:GITHUB_PATH -Value $bin
-              Write-Host "WiX найден: $bin"
-            } else {
-              Write-Host "::warning::WiX не найден — сборка .msi упадёт"
-            }
+          if (Get-Command light.exe -ErrorAction SilentlyContinue) {
+            Write-Host "WiX уже доступен"
+            exit 0
+          }
+          $wix = Get-ChildItem "${env:ProgramFiles(x86)}\WiX Toolset*\*\bin\light.exe" -ErrorAction SilentlyContinue
+          if ($wix) {
+            Add-Content -Path $env:GITHUB_PATH -Value (Split-Path -Parent $wix[0].FullName)
+            Write-Host "WiX найден"
+            exit 0
+          }
+          Write-Host "::group::Устанавливаем WiX Toolset"
+          choco install wixtoolset --yes --no-progress --limit-output
+          choco install wixtoolset --version=3.11.2 --yes --no-progress --limit-output
+          Write-Host "::endgroup::"
+          $after = Get-ChildItem "C:\Program Files (x86)\WiX Toolset*\bin\light.exe" -ErrorAction SilentlyContinue
+          if ($after) {
+            Add-Content -Path $env:GITHUB_PATH -Value (Split-Path -Parent $after[0].FullName)
           } else {
-            Write-Host "WiX уже в PATH: $($wix.Source)"
+            Write-Host "::warning::WiX установить не удалось — .msi будет пропущен"
           }
 
       # jpackage требует JDK 17+ с полным набором инструментов сборки пакетов.
