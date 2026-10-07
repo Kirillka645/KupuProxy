@@ -4,7 +4,7 @@
     "apk_name":  "KupuProxy-v1.4.0.2.apk",
     "apk_url":  "https://github.com/Kirillka645/KupuProxy/releases/download/v1.4.0.2/KupuProxy-v1.4.0.2.apk",
     "apk_size":  15982437,
-    "sha256":  "71607a34fb23882d5117efdc5c1d59e55715852cb5ad3ca3441a3286a3c09d2a",
+    "sha256":  "4022b1445ee2623a5003589f88b780408dc8ddf6a6d4e9d2e353635257bf85dd",
     "sha256_url":  "https://github.com/Kirillka645/KupuProxy/releases/download/v1.4.0.2/KupuProxy-v1.4.0.2.apk.sha256",
     "release_url":  "https://github.com/Kirillka645/KupuProxy/releases/tag/v1.4.0.2",
     "changelog":  "Первый релиз с десктоп-клиентом для Windows, Linux и macOS на Compose Multiplatform. Добавлена поддержка прокси SOCKS5, HTTP и WEB поверх MTProto, измерение jitter по нескольким замерам и цветовая индикация качества соединения. Проверка стала двухэтапной: сначала TCP-префлайт, затем полное рукопожатие протокола. Палитра унифицирована с иконкой приложения, добавлены анимации переходов, поиск и фильтр по протоколу. Исправлены две ошибки разбора: YAML-конфигурации не разбирались вообще, а логин и пароль из YAML-блока терялись."
