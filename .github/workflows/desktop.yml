@@ -43,7 +43,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
 
       - name: Unit tests
-        run: ./gradlew --no-daemon :shared:desktopTest :desktop:desktopTest
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon :shared:desktopTest :desktop:desktopTest
 
   package:
     name: Package ${{ matrix.name }}
@@ -118,7 +120,9 @@ jobs:
 
       # jpackage требует JDK 17+ с полным набором инструментов сборки пакетов.
       - name: Package
-        run: ./gradlew --no-daemon ${{ matrix.task }}
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon ${{ matrix.task }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7

@@ -109,6 +109,7 @@ jobs:
           VERSION: ${{ needs.verify.outputs.version }}
         run: |
           set -euo pipefail
+          chmod +x ./gradlew
           ./gradlew --no-daemon \
             --init-script tools/release/ci-signing.gradle \
             :app:assembleRelease
@@ -223,7 +224,9 @@ jobs:
           }
 
       - name: Собрать
-        run: ./gradlew --no-daemon ${{ matrix.task }}
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon ${{ matrix.task }}
 
       - name: Собрать ассеты
         shell: bash

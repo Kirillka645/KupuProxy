@@ -1,0 +1,12 @@
+# Скрипты запускаются на Linux-раннерах, где важен бит исполнения и отсутствие CRLF:
+# иначе ./gradlew завершается с кодом 126 (Permission denied / bad interpreter).
+gradlew text eol=lf
+*.sh text eol=lf
+gradle/wrapper/gradle-wrapper.jar binary
+gradle/wrapper/gradle-wrapper.properties text eol=lf
+
+# Остальные текстовые файлы — LF, чтобы Windows-рабочая копия не ломала CI.
+*.yml text eol=lf
+*.yaml text eol=lf
+*.kt text eol=lf
+*.kts text eol=lf
