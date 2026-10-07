@@ -64,15 +64,17 @@ jobs:
           - os: windows-latest
             name: Windows (portable)
             task: :desktop:createDistributable
-            ext: dir
+            fmt: zip
           - os: ubuntu-latest
             name: Linux (.deb)
             task: :desktop:packageDeb
             ext: deb
+          # packageDistributionForCurrentOS на Linux собирает тот же .deb,
+          # поэтому .tar.gz получаем из portable-образа.
           - os: ubuntu-latest
             name: Linux (tar.gz)
-            task: :desktop:packageDistributionForCurrentOS
-            ext: tar.gz
+            task: :desktop:createDistributable
+            fmt: targz
           - os: macos-latest
             name: macOS (.dmg)
             task: :desktop:packageDmg
@@ -143,24 +145,29 @@ jobs:
             Write-Host "логи jpackage отсутствуют"
           }
 
-      # Каталог выхода jpackage различается между версиями Compose (deb/ vs app/,
-      # .tar.gz vs .tgz), поэтому ищем артефакт по расширению, а не по жёсткому пути.
+      # Каталог выхода jpackage различается между версиями Compose, поэтому ищем
+      # артефакт по расширению, а не по жёсткому пути.
       - name: Stage artifact
         shell: bash
         env:
           EXT: ${{ matrix.ext }}
+          FMT: ${{ matrix.fmt }}
         run: |
           set -euo pipefail
           mkdir -p staged
-          if [ "$EXT" = "dir" ]; then
-            appdir=$(find desktop/build/compose/binaries/main -maxdepth 1 -type d -name 'KupuProxy*' | head -n1)
-            if [ -z "$appdir" ]; then
-              echo "::error::Каталог portable-сборки не найден. Есть:"
-              find desktop/build/compose/binaries -maxdepth 3 || true
-              exit 1
-            fi
+          find_appdir() {
+            find desktop/build/compose/binaries/main -maxdepth 1 -type d -name 'KupuProxy*' | head -n1
+          }
+          if [ "${FMT:-}" = "zip" ]; then
+            appdir=$(find_appdir)
+            [ -n "$appdir" ] || { echo "::error::Каталог portable-сборки не найден"; exit 1; }
             echo "найден каталог: $appdir"
-            cp -r "$appdir" staged/
+            zip -qr staged/portable-windows-x64.zip "$appdir"
+          elif [ "${FMT:-}" = "targz" ]; then
+            appdir=$(find_appdir)
+            [ -n "$appdir" ] || { echo "::error::Каталог portable-сборки не найден"; exit 1; }
+            echo "найден каталог: $appdir"
+            tar -czf staged/portable-linux-x64.tar.gz -C "$(dirname "$appdir")" "$(basename "$appdir")"
           else
             file=$(find desktop/build/compose/binaries -type f -name "*.$EXT" | head -n1)
             if [ -z "$file" ]; then

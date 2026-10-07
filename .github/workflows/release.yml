@@ -170,15 +170,17 @@ jobs:
           - os: windows-latest
             name: windows-portable
             task: :desktop:createDistributable
-            ext: dir
+            fmt: zip
           - os: ubuntu-latest
             name: linux-deb
             task: :desktop:packageDeb
             ext: deb
+          # packageDistributionForCurrentOS на Linux собирает тот же .deb,
+          # поэтому .tar.gz получаем из portable-образа, как и Windows-архив.
           - os: ubuntu-latest
             name: linux-tar
-            task: :desktop:packageDistributionForCurrentOS
-            ext: tar.gz
+            task: :desktop:createDistributable
+            fmt: targz
           - os: macos-latest
             name: macos-dmg
             task: :desktop:packageDmg
@@ -260,25 +262,32 @@ jobs:
         env:
           NAME: ${{ matrix.name }}
           EXT: ${{ matrix.ext }}
+          FMT: ${{ matrix.fmt }}
           VERSION: ${{ needs.verify.outputs.version }}
         run: |
           set -euo pipefail
           mkdir -p staged
-          if [ "$EXT" = "dir" ]; then
-            # Каталог с portable-сборкой создаётся Compose; имя может отличаться
-            # от ожидаемого, поэтому ищем, а не обращаемся по фиксированному пути.
-            appdir=$(find desktop/build/compose/binaries/main -maxdepth 1 -type d -name 'KupuProxy*' | head -n1)
-            if [ -z "$appdir" ]; then
-              echo "::error::Каталог portable-сборки не найден. Есть:"
-              find desktop/build/compose/binaries -maxdepth 3 || true
-              exit 1
-            fi
-            echo "собираем portable из $appdir"
+
+          # Portable-образ: Compose создаёт каталог приложения, имя которого
+          # зависит от версии, поэтому ищем его, а не обращаемся по точному пути.
+          find_appdir() {
+            find desktop/build/compose/binaries/main -maxdepth 1 -type d -name 'KupuProxy*' | head -n1
+          }
+
+          if [ "${FMT:-}" = "zip" ]; then
+            appdir=$(find_appdir)
+            [ -n "$appdir" ] || { echo "::error::Каталог portable-сборки не найден"; exit 1; }
+            echo "собираем windows-x64.zip из $appdir"
             zip -qr "staged/KupuProxy-Desktop-${VERSION}-windows-x64.zip" "$appdir"
+          elif [ "${FMT:-}" = "targz" ]; then
+            appdir=$(find_appdir)
+            [ -n "$appdir" ] || { echo "::error::Каталог portable-сборки не найден"; exit 1; }
+            echo "собираем linux-x64.tar.gz из $appdir"
+            tar -czf "staged/KupuProxy-Desktop-${VERSION}-linux-x64.tar.gz" \
+              -C "$(dirname "$appdir")" "$(basename "$appdir")"
           else
             # Ищем строго по своему расширению. Общий поиск по нескольким
-            # расширениям приводил к тому, что задача .tar.gz копировала .deb,
-            # и после слияния артефактов оставался один файл.
+            # расширениям приводил к тому, что задача .tar.gz копировала .deb.
             file=$(find desktop/build/compose/binaries -type f -name "*.$EXT" | head -n1)
             if [ -z "$file" ]; then
               echo "::error::Артефакт .$EXT не найден. Есть:"
