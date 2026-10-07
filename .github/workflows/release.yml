@@ -224,9 +224,24 @@ jobs:
           }
 
       - name: Собрать
+        id: build
+        shell: bash
         run: |
+          set -euo pipefail
           chmod +x ./gradlew
           ./gradlew --no-daemon ${{ matrix.task }}
+
+      # jpackage пишет подробности сбоя в файл логов и не печатает их в stdout,
+      # из-за чего в CI причина падения не видна. Дублируем лог в консоль.
+      - name: Показать логи jpackage при сбое
+        if: failure() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-ChildItem desktop\build\compose\logs -Recurse -Filter "*.txt" -ErrorAction SilentlyContinue |
+            ForEach-Object {
+              Write-Host "=== $($_.FullName) ==="
+              Get-Content $_.FullName -Tail 60
+            }
 
       - name: Собрать ассеты
         shell: bash
@@ -238,11 +253,26 @@ jobs:
           set -euo pipefail
           mkdir -p staged
           if [ "$NAME" = "windows-portable" ]; then
-            zip -qr "staged/KupuProxy-Desktop-${VERSION}-windows-x64.zip" \
-              "desktop/build/compose/binaries/main/app/KupuProxy"
+            # Каталог с portable-сборкой создаётся Compose; имя может отличаться
+            # от ожидаемого, поэтому ищем, а не обращаемся по фиксированному пути.
+            appdir=$(find desktop/build/compose/binaries/main -maxdepth 1 -type d -name 'KupuProxy*' | head -n1)
+            if [ -z "$appdir" ]; then
+              echo "::error::Каталог portable-сборки не найден. Есть:"
+              find desktop/build/compose/binaries -maxdepth 3 || true
+              exit 1
+            fi
+            echo "собираем portable из $appdir"
+            zip -qr "staged/KupuProxy-Desktop-${VERSION}-windows-x64.zip" "$appdir"
           else
-            file=$(ls -1 $OUT | head -n1)
-            [ -n "$file" ] || { echo "::error::Артефакт не найден: $OUT"; exit 1; }
+            # Точный путь к выходу jpackage различается между версиями Compose
+            # (deb/ vs app/, .tar.gz vs .tgz), поэтому ищем по расширению.
+            file=$(find desktop/build/compose/binaries -type f \( -name '*.deb' -o -name '*.tar.gz' -o -name '*.msi' \) | head -n1)
+            if [ -z "$file" ]; then
+              echo "::error::Артефакт $OUT не найден. Есть:"
+              find desktop/build/compose/binaries -type f | head -n40 || true
+              exit 1
+            fi
+            echo "найден артефакт: $file"
             cp "$file" staged/
           fi
           ls -la staged

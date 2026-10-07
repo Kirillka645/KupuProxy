@@ -124,9 +124,24 @@ jobs:
           chmod +x ./gradlew
           ./gradlew --no-daemon ${{ matrix.task }}
 
+      # Причина сбоя jpackage пишется в файл и не попадает в stdout.
+      - name: Показать логи jpackage при сбое
+        if: failure() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-ChildItem desktop\build\compose\logs -Recurse -Filter "*.txt" -ErrorAction SilentlyContinue |
+            ForEach-Object {
+              Write-Host "=== $($_.FullName) ==="
+              Get-Content $_.FullName -Tail 60
+            }
+
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
           name: KupuProxy-desktop-${{ matrix.os }}-${{ strategy.job-index }}
-          path: ${{ matrix.artifact }}
+          # Точный путь к выходу jpackage различается между версиями Compose,
+          # поэтому ищем по расширению, а не обращаемся к одному жёсткому пути.
+          path: |
+            ${{ matrix.artifact }}
+            desktop/build/compose/binaries/main/app/**/*
           if-no-files-found: error
