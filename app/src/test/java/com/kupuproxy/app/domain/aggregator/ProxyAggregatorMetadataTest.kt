@@ -1,7 +1,7 @@
 package com.kupuproxy.app.domain.aggregator
 
-import com.kupuproxy.app.domain.model.RawProxyEntry
-import com.kupuproxy.app.domain.model.SecretType
+import com.kupuproxy.shared.domain.model.RawProxyEntry
+import com.kupuproxy.shared.domain.model.SecretType
 import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue

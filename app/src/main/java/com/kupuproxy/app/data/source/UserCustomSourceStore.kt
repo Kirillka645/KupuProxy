@@ -4,7 +4,7 @@ import android.content.Context
 import com.kupuproxy.app.data.local.db.AppDatabase
 import com.kupuproxy.app.data.local.db.SourceEntity
 import com.kupuproxy.app.data.remote.SafeUrlPolicy
-import com.kupuproxy.app.domain.model.SourceKind
+import com.kupuproxy.shared.domain.model.SourceKind
 import com.kupuproxy.app.domain.source.ProxySource
 import java.util.UUID
 

@@ -1,6 +1,6 @@
 package com.kupuproxy.app.data.source
 
-import com.kupuproxy.app.domain.model.RawProxyEntry
+import com.kupuproxy.shared.domain.model.RawProxyEntry
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay

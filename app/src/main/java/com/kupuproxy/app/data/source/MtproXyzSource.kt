@@ -3,9 +3,9 @@ package com.kupuproxy.app.data.source
 import android.util.Base64
 import com.kupuproxy.app.data.remote.HttpSupport
 import com.kupuproxy.app.data.remote.TelegramBypass
-import com.kupuproxy.app.domain.model.RawProxyEntry
-import com.kupuproxy.app.domain.model.SourceKind
-import com.kupuproxy.app.domain.parser.ProxyParser
+import com.kupuproxy.shared.domain.model.RawProxyEntry
+import com.kupuproxy.shared.domain.model.SourceKind
+import com.kupuproxy.shared.domain.parser.ProxyParser
 import com.kupuproxy.app.domain.source.ProxySource
 import okhttp3.OkHttpClient
 import org.json.JSONArray

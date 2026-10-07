@@ -13,8 +13,11 @@ import com.kupuproxy.app.data.source.KortCollectorSource
 import com.kupuproxy.app.data.source.RemoteManifestLoader
 import com.kupuproxy.app.data.source.UserCustomSourceStore
 import com.kupuproxy.app.domain.aggregator.ProxyAggregator
-import com.kupuproxy.app.domain.model.SourceResult
-import com.kupuproxy.app.domain.parser.ProxyParser
+import com.kupuproxy.shared.domain.check.ProbeResult
+import com.kupuproxy.shared.domain.check.ProxyProbe
+import com.kupuproxy.shared.domain.model.ProxyProtocol
+import com.kupuproxy.shared.domain.model.SourceResult
+import com.kupuproxy.shared.domain.parser.ProxyParser
 import com.kupuproxy.app.domain.source.BuiltInSourceIdentity
 import com.kupuproxy.app.domain.source.ProxySource
 import com.kupuproxy.app.domain.source.ProxySourceRegistry
@@ -302,13 +305,24 @@ object ProxyManager {
     }
 
     /**
-     * Полная проверка «как Telegram» (fast) + live callback. [onFound] вызывается на Main при
-     * каждом рабочем прокси.
+     * Полная проверка доступности + live callback. [onFound] вызывается на Main при каждом
+     * рабочем прокси.
+     *
+     * Проверяются все поддерживаемые транспорты: MTProto, SOCKS5, HTTP и WEB. Раньше SOCKS-ссылки
+     * молча отбрасывались, а остальных протоколов не было вовсе.
+     *
+     * Сканирование двухэтапное: сначала один короткий TCP-запрос на каждый host:port, затем полное
+     * рукопожатие протокола только для тех, кто принял соединение. Для крупных коллекторов, где на
+     * один мёртвый host приходится несколько разных секретов, это заметно быстрее.
+     *
+     * При [jitterSamples] > 1 по каждому кандидату выполняется несколько замеров, и в результат
+     * попадает средняя задержка и разброс.
      */
     suspend fun checkProxiesPingParallel(
         proxies: List<String>,
         settings: ProfileSettings,
         profileLabel: String = settings.label,
+        jitterSamples: Int = 1,
         onProgress: (processed: Int, total: Int, working: Int) -> Unit,
         onFound: (ProxyWithPing) -> Unit = {},
         onChecked: (ProxyObservation) -> Unit = {},
@@ -321,77 +335,132 @@ object ProxyManager {
             val connectMs = settings.connectTimeoutMs.coerceIn(700, 1800)
             val responseMs = (settings.connectTimeoutMs + 600).coerceIn(1100, 2400)
             val stopAt = settings.stopWhenFound
-            val cursor = AtomicInteger(0)
+            val maxPing = settings.maxPingMs.coerceAtLeast(5000)
             val processed = AtomicInteger(0)
             val working = AtomicInteger(0)
             val stopped = AtomicBoolean(false)
             val results = java.util.Collections.synchronizedList(mutableListOf<ProxyWithPing>())
 
+            // Группируем по протоколу и host:port: один TCP-префлайт на группу.
+            val groups = LinkedHashMap<String, MutableList<String>>()
+            val unparseable = AtomicInteger(0)
+
+            proxies.forEach { url ->
+                val parsed = ProxyProbe.parse(url)
+                if (parsed == null) {
+                    unparseable.incrementAndGet()
+                    processed.incrementAndGet()
+                    onChecked(ProxyObservation(url, ok = false, pingMs = -1))
+                } else {
+                    val key = "${parsed.protocol.name}:${parsed.host.lowercase(Locale.US)}:${parsed.port}"
+                    groups.getOrPut(key) { mutableListOf() }.add(url)
+                }
+            }
+
+            if (unparseable.get() > 0) {
+                val skipped = unparseable.get()
+                withContext(Dispatchers.Main) { onProgress(skipped, total, 0) }
+            }
+            if (groups.isEmpty()) return@withContext emptyList()
+
+            val groupList = groups.entries.toList()
+            val groupCursor = AtomicInteger(0)
+            val reachable = java.util.Collections.synchronizedList(mutableListOf<MutableList<String>>())
+
             coroutineScope {
-                List(concurrency) {
-                        async {
-                            while (currentCoroutineContext().isActive && !stopped.get()) {
-                                val index = cursor.getAndIncrement()
-                                if (index >= total) break
-                                val proxyUrl = proxies[index]
+                // Фаза 1 — быстрый TCP-префлайт по уникальным host:port.
+                List(concurrency.coerceAtMost(groupList.size)) {
+                    async {
+                        while (currentCoroutineContext().isActive && !stopped.get()) {
+                            val index = groupCursor.getAndIncrement()
+                            if (index >= groupList.size) break
+                            val entry = groupList[index]
 
-                                val item =
-                                    if (proxyUrl.contains("socks?", ignoreCase = true)) {
-                                        null
-                                    } else {
-                                        val result =
-                                            try {
-                                                MtprotoChecker.checkUrl(
-                                                    proxyUrl,
-                                                    connectMs,
-                                                    responseMs,
-                                                )
-                                            } catch (cancelled: CancellationException) {
-                                                throw cancelled
-                                            } catch (_: Exception) {
-                                                MtprotoChecker.CheckResult(false, -1, "error")
-                                            }
-                                        if (
-                                            result.ok &&
-                                                result.rttMs in
-                                                    1 until settings.maxPingMs.coerceAtLeast(5000)
-                                        ) {
-                                            ProxyWithPing(
-                                                url = proxyUrl,
-                                                pingMs = result.rttMs,
-                                                profileLabel = profileLabel,
-                                                status = ProxyStatus.AVAILABLE,
-                                                statusText = "Доступен",
-                                            )
-                                        } else null
-                                    }
-
-                                if (item != null) {
-                                    results.add(item)
-                                    val foundCount = working.incrementAndGet()
-                                    if (stopAt > 0 && foundCount >= stopAt) stopped.set(true)
-                                }
-                                val processedCount = processed.incrementAndGet()
-                                val workingCount = working.get()
-                                onChecked(
-                                    ProxyObservation(
-                                        url = proxyUrl,
-                                        ok = item != null,
-                                        pingMs = item?.pingMs ?: -1,
+                            val first = ProxyProbe.parse(entry.value.first())
+                            val alive =
+                                first != null &&
+                                    ProxyProbe.isTcpReachable(
+                                        first.host,
+                                        first.port,
+                                        (connectMs / 2).coerceIn(500, 800),
                                     )
-                                )
-                                if (item != null || processedCount == total || processedCount % 8 == 0) {
+                            if (alive) {
+                                reachable.add(entry.value)
+                            } else {
+                                entry.value.forEach { url ->
+                                    onChecked(ProxyObservation(url, ok = false, pingMs = -1))
+                                }
+                                val done = processed.addAndGet(entry.value.size)
+                                if (done % 16 == 0 || done == total) {
                                     withContext(Dispatchers.Main) {
-                                        onProgress(processedCount, total, workingCount)
-                                        if (item != null) onFound(item)
+                                        onProgress(done, total, working.get())
                                     }
                                 }
                             }
                         }
                     }
-                    .awaitAll()
+                }.awaitAll()
+
+                if (stopped.get() || reachable.isEmpty()) return@coroutineScope
+
+                // Фаза 2 — полное рукопожатие протокола по каждому секрету.
+                val liveUrls = reachable.flatMap { it }
+                val cursor = AtomicInteger(0)
+
+                List(concurrency.coerceAtMost(liveUrls.size)) {
+                    async {
+                        while (currentCoroutineContext().isActive && !stopped.get()) {
+                            val index = cursor.getAndIncrement()
+                            if (index >= liveUrls.size) break
+                            val url = liveUrls[index]
+
+                            val result = try {
+                                ProxyProbe.probeUrl(url, connectMs, responseMs, jitterSamples)
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (_: Exception) {
+                                ProbeResult(false, ProxyProtocol.MTPROTO, -1, error = "error")
+                            }
+
+                            val item =
+                                if (result.ok && result.latencyMs in 1 until maxPing) {
+                                    ProxyWithPing(
+                                        url = url,
+                                        pingMs = result.latencyMs,
+                                        profileLabel = profileLabel,
+                                        status = ProxyStatus.AVAILABLE,
+                                        statusText = "Доступен",
+                                        protocol = result.protocol,
+                                        jitterMs = result.jitterMs,
+                                        samples = result.samples.size.coerceAtLeast(1),
+                                    )
+                                } else null
+
+                            if (item != null) {
+                                results.add(item)
+                                val foundCount = working.incrementAndGet()
+                                if (stopAt > 0 && foundCount >= stopAt) stopped.set(true)
+                            }
+                            val processedCount = processed.incrementAndGet()
+                            onChecked(
+                                ProxyObservation(
+                                    url = url,
+                                    ok = item != null,
+                                    pingMs = item?.pingMs ?: -1,
+                                ),
+                            )
+                            if (item != null || processedCount == total || processedCount % 8 == 0) {
+                                withContext(Dispatchers.Main) {
+                                    onProgress(processedCount, total, working.get())
+                                    if (item != null) onFound(item)
+                                }
+                            }
+                        }
+                    }
+                }.awaitAll()
             }
-            results.toList().sortedBy { it.pingMs }
+
+            results.toList().sortedWith(compareBy({ it.pingMs }, { it.jitterMs }))
         }
 
     fun parseProxyUrl(url: String): ProxyInfo? {

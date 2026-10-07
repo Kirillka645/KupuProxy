@@ -1,5 +1,6 @@
-package com.kupuproxy.app
+package com.kupuproxy.shared.domain.check
 
+import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.InetSocketAddress
@@ -8,6 +9,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.security.MessageDigest
 import java.security.SecureRandom
+import java.util.Locale
 import javax.crypto.Cipher
 import javax.crypto.Mac
 import javax.crypto.spec.IvParameterSpec
@@ -42,13 +44,13 @@ object MtprotoChecker {
     data class SecretInfo(
         val raw: ByteArray,
         val isFakeTls: Boolean,
-        val domain: String = DEFAULT_DOMAIN
+        val domain: String = DEFAULT_DOMAIN,
     )
 
     data class CheckResult(
         val ok: Boolean,
         val rttMs: Int,
-        val error: String? = null
+        val error: String? = null,
     )
 
     fun checkUrl(url: String, connectTimeoutMs: Int, responseTimeoutMs: Int): CheckResult {
@@ -61,7 +63,7 @@ object MtprotoChecker {
         port: Int,
         secret: SecretInfo,
         connectTimeoutMs: Int,
-        responseTimeoutMs: Int
+        responseTimeoutMs: Int,
     ): CheckResult {
         // Fast path: 1 DC + 1 mode (как mtproxychecker --fast)
         // Раньше 3 DC × 3 mode = до 9 таймаутов на мёртвый прокси.
@@ -70,14 +72,28 @@ object MtprotoChecker {
         val started = System.currentTimeMillis()
 
         return try {
-            val rtt = checkOnce(
-                host, port, secret, mode, dcId,
-                connectTimeoutMs, responseTimeoutMs
-            )
+            val rtt = checkOnce(host, port, secret, mode, dcId, connectTimeoutMs, responseTimeoutMs)
             CheckResult(true, rtt)
         } catch (e: Exception) {
             val elapsed = (System.currentTimeMillis() - started).toInt()
-            CheckResult(false, elapsed.coerceAtLeast(-1), e.message ?: "unavailable")
+            CheckResult(false, elapsed.coerceAtLeast(0), e.message ?: "unavailable")
+        }
+    }
+
+    /**
+     * Быстрый TCP-префлайт. Крупные коллекторы часто содержат несколько секретов на один и тот же
+     * мёртвый host — один короткий TCP-запрос отсекает их до дорогого криптографического рукопожатия.
+     */
+    fun isTcpReachable(host: String, port: Int, timeoutMs: Int): Boolean {
+        if (host.isBlank() || port !in 1..65535) return false
+        return try {
+            Socket().use { socket ->
+                socket.tcpNoDelay = true
+                socket.connect(InetSocketAddress(host, port), timeoutMs.coerceIn(400, 1_200))
+                true
+            }
+        } catch (_: Exception) {
+            false
         }
     }
 
@@ -88,13 +104,12 @@ object MtprotoChecker {
         mode: Mode,
         dcId: Int,
         connectTimeoutMs: Int,
-        responseTimeoutMs: Int
+        responseTimeoutMs: Int,
     ): Int {
         val start = System.currentTimeMillis()
         val socket = Socket()
         try {
             socket.tcpNoDelay = true
-            // Короткий TCP: если порт мёртв — сразу out
             val tcpTimeout = connectTimeoutMs.coerceIn(600, 2500)
             socket.connect(InetSocketAddress(host, port), tcpTimeout)
             socket.soTimeout = responseTimeoutMs.coerceIn(800, 3500)
@@ -121,6 +136,7 @@ object MtprotoChecker {
             try {
                 socket.close()
             } catch (_: Exception) {
+                // ignore
             }
         }
     }
@@ -131,10 +147,13 @@ object MtprotoChecker {
 
     fun parseProxy(url: String): ParsedProxy? {
         return try {
+            val lower = url.trim().lowercase()
             val q = when {
-                url.startsWith("tg://proxy?") -> url.removePrefix("tg://proxy?")
-                url.startsWith("https://t.me/proxy?") -> url.substringAfter("?")
-                url.startsWith("http://t.me/proxy?") -> url.substringAfter("?")
+                lower.startsWith("tg://proxy?") -> url.substringAfter('?')
+                lower.startsWith("tg://socks?") -> url.substringAfter('?')
+                lower.startsWith("https://t.me/proxy?") -> url.substringAfter('?')
+                lower.startsWith("http://t.me/proxy?") -> url.substringAfter('?')
+                lower.startsWith("https://telegram.me/proxy?") -> url.substringAfter('?')
                 else -> return null
             }
             var host = ""
@@ -143,10 +162,10 @@ object MtprotoChecker {
             q.split("&").forEach { p ->
                 val parts = p.split("=", limit = 2)
                 if (parts.size == 2) {
-                    when (parts[0]) {
-                        "server" -> host = parts[1]
+                    when (parts[0].lowercase()) {
+                        "server", "host", "ip" -> if (host.isEmpty()) host = decode(parts[1])
                         "port" -> port = parts[1].toIntOrNull() ?: 0
-                        "secret" -> secretRaw = parts[1]
+                        "secret", "password" -> if (secretRaw.isEmpty()) secretRaw = decode(parts[1])
                     }
                 }
             }
@@ -157,6 +176,10 @@ object MtprotoChecker {
             null
         }
     }
+
+    private fun decode(value: String): String = runCatching {
+        java.net.URLDecoder.decode(value, Charsets.UTF_8.name())
+    }.getOrDefault(value)
 
     fun decodeSecret(secret: String): SecretInfo? {
         val s = secret.trim()
@@ -189,13 +212,14 @@ object MtprotoChecker {
                 if (bytes.size >= 16) return SecretInfo(bytes.copyOf(16), false)
             }
         } catch (_: Exception) {
+            // fall through to base64
         }
 
         // base64 / base64url
         return try {
             val b64 = s.replace('-', '+').replace('_', '/')
             val pad = "=".repeat((4 - b64.length % 4) % 4)
-            val raw = android.util.Base64.decode(b64 + pad, android.util.Base64.DEFAULT)
+            val raw = java.util.Base64.getDecoder().decode(b64 + pad)
             when {
                 raw.size == 16 -> SecretInfo(raw, false)
                 raw.size >= 17 && raw[0] == 0xDD.toByte() ->
@@ -204,7 +228,7 @@ object MtprotoChecker {
                     val domainBytes = if (raw.size > 17) raw.copyOfRange(17, raw.size) else ByteArray(0)
                     val domain = extractDomain(
                         domainBytes.toString(Charsets.US_ASCII)
-                            .filter { it.isLetterOrDigit() || it == '.' || it == '-' }
+                            .filter { it.isLetterOrDigit() || it == '.' || it == '-' },
                     )
                     SecretInfo(raw.copyOfRange(1, 17), true, domain)
                 }
@@ -241,15 +265,13 @@ object MtprotoChecker {
             init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), IvParameterSpec(iv))
         }
 
-        fun update(data: ByteArray): ByteArray {
-            return cipher.update(data) ?: ByteArray(0)
-        }
+        fun update(data: ByteArray): ByteArray = cipher.update(data) ?: ByteArray(0)
     }
 
     private fun makeObfuscated2Handshake(
         secret: ByteArray,
         mode: Mode,
-        dcId: Int
+        dcId: Int,
     ): Triple<ByteArray, AesCtr, AesCtr> {
         val protoTag = when (mode) {
             Mode.SECURE, Mode.FAKETLS -> PROTO_SECURE
@@ -262,7 +284,7 @@ object MtprotoChecker {
             "\u0000\u0000\u0000\u0000",
             String(PROTO_ABRIDGED, Charsets.ISO_8859_1),
             String(PROTO_INTERMEDIATE, Charsets.ISO_8859_1),
-            String(PROTO_SECURE, Charsets.ISO_8859_1)
+            String(PROTO_SECURE, Charsets.ISO_8859_1),
         )
 
         val init = ByteArray(64)
@@ -349,7 +371,7 @@ object MtprotoChecker {
                         0x7F,
                         (words and 0xFF).toByte(),
                         ((words shr 8) and 0xFF).toByte(),
-                        ((words shr 16) and 0xFF).toByte()
+                        ((words shr 16) and 0xFF).toByte(),
                     )
                 }
                 header + data
@@ -432,7 +454,7 @@ object MtprotoChecker {
     private class FakeTlsTransport(
         private val socket: Socket,
         private val secret: ByteArray,
-        private val domain: String
+        private val domain: String,
     ) : Transport {
         private val input = socket.getInputStream()
         private val output = socket.getOutputStream()
@@ -458,6 +480,7 @@ object MtprotoChecker {
             val appHeader = readExactStream(input, 5)
             val (appType, appLen) = parseTlsHeader(appHeader)
             require(appType == 0x17) { "expected app data, got 0x${appType.toString(16)}" }
+
             val appPayload = readExactStream(input, appLen)
 
             val response = firstHeader + firstPayload + ccs + appHeader + appPayload
@@ -546,8 +569,8 @@ object MtprotoChecker {
                 0xC0.toByte(), 0x2C, 0xC0.toByte(), 0x30, 0xCC.toByte(), 0xA9.toByte(),
                 0xCC.toByte(), 0xA8.toByte(), 0xC0.toByte(), 0x13, 0xC0.toByte(), 0x14,
                 0x00, 0x9C.toByte(), 0x00, 0x9D.toByte(), 0x00, 0x2F, 0x00, 0x35, 0x00, 0x0A,
-                0x01, 0x00, 0x01, 0x91.toByte()
-            )
+                0x01, 0x00, 0x01, 0x91.toByte(),
+            ),
         )
         addGrease(2)
         add(0x00, 0x00, 0x00, 0x00)
@@ -559,8 +582,8 @@ object MtprotoChecker {
         addBytes(
             byteArrayOf(
                 0x00, 0x17, 0x00, 0x00, 0xFF.toByte(), 0x01, 0x00, 0x01, 0x00, 0x00, 0x0A,
-                0x00, 0x0A, 0x00, 0x08
-            )
+                0x00, 0x0A, 0x00, 0x08,
+            ),
         )
         addGrease(4)
         addBytes(
@@ -571,8 +594,8 @@ object MtprotoChecker {
                 0x00, 0x05, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0D, 0x00, 0x14, 0x00,
                 0x12, 0x04, 0x03, 0x08, 0x04, 0x04, 0x01, 0x05, 0x03, 0x08, 0x05, 0x05,
                 0x01, 0x08, 0x06, 0x06, 0x01, 0x02, 0x01, 0x00, 0x12, 0x00, 0x00, 0x00,
-                0x33, 0x00, 0x2B, 0x00, 0x29
-            )
+                0x33, 0x00, 0x2B, 0x00, 0x29,
+            ),
         )
         addGrease(4)
         add(0x00, 0x01, 0x00, 0x00, 0x1D, 0x00, 0x20)
@@ -626,13 +649,14 @@ object MtprotoChecker {
         val ver = header.copyOfRange(1, 3)
         require(
             ver.contentEquals(byteArrayOf(0x03, 0x01)) ||
-                ver.contentEquals(byteArrayOf(0x03, 0x03))
+                ver.contentEquals(byteArrayOf(0x03, 0x03)),
         ) { "bad tls ver" }
         val len = ((header[3].toInt() and 0xFF) shl 8) or (header[4].toInt() and 0xFF)
         return type to len
     }
 
-    private fun readExactStream(input: InputStream, n: Int): ByteArray {
+    internal fun readExactStream(input: InputStream, n: Int): ByteArray {
+        if (n <= 0) return ByteArray(0)
         val out = ByteArray(n)
         var off = 0
         while (off < n) {
@@ -641,6 +665,20 @@ object MtprotoChecker {
             off += r
         }
         return out
+    }
+
+    /** Читает до `\r\n` включительно. Используется HTTP/SOCKS-проверками. */
+    internal fun readLine(input: InputStream, maxBytes: Int = 8 * 1024): String {
+        val buffer = ByteArrayOutputStream(64)
+        var previous = -1
+        while (buffer.size() < maxBytes) {
+            val b = input.read()
+            if (b < 0) break
+            buffer.write(b)
+            if (previous == '\r'.code && b == '\n'.code) break
+            previous = b
+        }
+        return buffer.toString(Charsets.ISO_8859_1).trimEnd('\r', '\n')
     }
 
     // endregion
@@ -664,7 +702,7 @@ object MtprotoChecker {
     }
 
     private fun ByteArray.toHex(): String =
-        joinToString("") { "%02x".format(it) }
+        joinToString("") { "%02x".format(Locale.ROOT, it) }
 
     private operator fun ByteArray.plus(other: ByteArray): ByteArray =
         this.copyOf(size + other.size).also {

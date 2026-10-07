@@ -1,7 +1,7 @@
 package com.kupuproxy.app.domain.source
 
-import com.kupuproxy.app.domain.model.RawProxyEntry
-import com.kupuproxy.app.domain.model.SourceKind
+import com.kupuproxy.shared.domain.model.RawProxyEntry
+import com.kupuproxy.shared.domain.model.SourceKind
 import okhttp3.OkHttpClient
 
 interface ProxySource {

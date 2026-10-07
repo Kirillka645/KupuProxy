@@ -22,3 +22,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "KupuProxy"
 include(":app")
+include(":shared")
+include(":desktop")

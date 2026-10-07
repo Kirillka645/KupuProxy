@@ -2,8 +2,8 @@ package com.kupuproxy.app
 
 import android.content.Context
 import com.kupuproxy.app.data.source.KortCollectorStats
-import com.kupuproxy.app.domain.model.RawProxyEntry
-import com.kupuproxy.app.domain.model.SecretType
+import com.kupuproxy.shared.domain.model.RawProxyEntry
+import com.kupuproxy.shared.domain.model.SecretType
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException

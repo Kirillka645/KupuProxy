@@ -14,8 +14,8 @@ android {
         applicationId = "com.kupuproxy.app"
         minSdk = 24
         targetSdk = 35
-        versionCode = 21
-        versionName = "1.4.0.1"
+        versionCode = 22
+        versionName = "1.4.0.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -65,6 +65,9 @@ android {
 
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
+
+    // Общая логика: парсер, проверка прокси, дизайн-токены. Используется и десктоп-клиентом.
+    implementation(project(":shared"))
 
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
     implementation("androidx.core:core-ktx:1.15.0")
