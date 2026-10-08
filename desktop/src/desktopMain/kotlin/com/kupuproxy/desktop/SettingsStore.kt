@@ -17,6 +17,8 @@ data class DesktopSettings(
     val maxLatencyFilterMs: Int = 5000,
     val protocolFilter: Set<ProxyProtocol> = ProxyProtocol.entries.toSet(),
     val favorites: Set<String> = emptySet(),
+    /** Включённые встроенные источники из `proxy-feeds/`. */
+    val stockFeeds: Set<String> = StockFeeds.defaultEnabledIds,
 ) {
     fun toScanConfig(): ScanConfig = ScanConfig(
         jitterSamples = jitterSamples,
@@ -30,11 +32,7 @@ enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
 object SettingsStore {
 
-    private val file: File by lazy {
-        val dir = File(System.getProperty("user.home"), ".kupuproxy")
-        dir.mkdirs()
-        File(dir, "settings.properties")
-    }
+    private val file: File by lazy { File(AppPaths.dataDir(), "settings.properties") }
 
     fun load(): DesktopSettings {
         if (!file.exists()) return DesktopSettings()
@@ -62,6 +60,15 @@ object SettingsStore {
             maxLatencyFilterMs = props.getProperty("maxLatency", "5000").toIntOrNull()?.coerceIn(100, 15_000) ?: 5000,
             protocolFilter = protocols.ifEmpty { ProxyProtocol.entries.toSet() },
             favorites = favorites,
+            stockFeeds = if (props.containsKey("stockFeeds")) {
+                props.getProperty("stockFeeds").orEmpty()
+                    .split(',')
+                    .map(String::trim)
+                    .filter { StockFeeds.byId(it) != null }
+                    .toSet()
+            } else {
+                StockFeeds.defaultEnabledIds
+            },
         )
     }
 
@@ -77,16 +84,26 @@ object SettingsStore {
         props.setProperty("maxLatency", settings.maxLatencyFilterMs.toString())
         props.setProperty("protocols", settings.protocolFilter.joinToString(",") { it.name })
         props.setProperty("favorites", settings.favorites.joinToString("|"))
+        props.setProperty("stockFeeds", settings.stockFeeds.joinToString(","))
 
         // Пишем через временный файл: прерванная запись не должна терять настройки.
-        val tmp = File(file.parentFile, "${file.name}.tmp")
-        val buffer = java.io.StringWriter()
-        props.store(buffer, null)
-        tmp.writeText(buffer.toString(), StandardCharsets.UTF_8)
-        if (!tmp.renameTo(file)) {
-            file.writeText(tmp.readText(StandardCharsets.UTF_8), StandardCharsets.UTF_8)
-            tmp.delete()
-        }
+        // Properties.load(InputStream) читает ISO-8859-1, а store(Writer) пишет символы как есть —
+        // поэтому пишем через OutputStream: не-ASCII (кириллица в URL избранного) экранируется \uXXXX.
+        runCatching {
+            file.parentFile?.mkdirs()
+            val tmp = File(file.parentFile, "${file.name}.tmp")
+            tmp.outputStream().use { props.store(it, null) }
+            runCatching {
+                java.nio.file.Files.move(
+                    tmp.toPath(),
+                    file.toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                    java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                )
+            }.recoverCatching {
+                java.nio.file.Files.move(tmp.toPath(), file.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            }.getOrThrow()
+        }.onFailure { System.err.println("[KupuProxy] не удалось сохранить настройки: ${it.message}") }
     }
 }
 
@@ -96,22 +113,15 @@ data class ProxyInput(val label: String, val body: String)
 object ProxySource {
 
     fun fromFile(file: File): ProxyInput {
+        require(file.isFile) { "Файл не найден: ${file.name}" }
+        require(file.length() <= StockFeeds.MAX_FEED_BYTES) { "Файл больше ${StockFeeds.MAX_FEED_BYTES / 1024 / 1024} МБ" }
         val text = file.readText(StandardCharsets.UTF_8)
         return ProxyInput(file.name, text)
     }
 
-    suspend fun fromUrl(url: String): ProxyInput {
-        val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
-        connection.connectTimeout = 10_000
-        connection.readTimeout = 20_000
-        connection.instanceFollowRedirects = true
-        val code = connection.responseCode
-        if (code !in 200..299) {
-            connection.disconnect()
-            error("HTTP $code")
-        }
-        val text = connection.inputStream.bufferedReader(StandardCharsets.UTF_8).use { it.readText() }
-        connection.disconnect()
-        return ProxyInput(url.substringAfterLast('/'), text)
+    /** Загрузка блокирующая — вызывать из фонового потока. */
+    fun fromUrl(url: String): ProxyInput {
+        val text = StockFeeds.download(url)
+        return ProxyInput(url.substringAfterLast('/').substringBefore('?').ifBlank { url }, text)
     }
 }

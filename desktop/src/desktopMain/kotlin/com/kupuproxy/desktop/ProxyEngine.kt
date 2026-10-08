@@ -4,6 +4,7 @@ import com.kupuproxy.shared.domain.check.LatencyStats
 import com.kupuproxy.shared.domain.check.LinkQuality
 import com.kupuproxy.shared.domain.check.ProxyProbe
 import com.kupuproxy.shared.domain.model.ProxyProtocol
+import com.kupuproxy.shared.domain.model.RawProxyEntry
 import com.kupuproxy.shared.domain.parser.ProxyParser
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -74,6 +75,8 @@ class ProxyEngine {
         cancelled.set(false)
     }
 
+    val isCancelled: Boolean get() = cancelled.get()
+
     /**
      * Проверяет список ссылок. [onProgress] и [onFound] вызываются из фонового потока,
  * поэтому вызывающий код сам решает, как маршалить их в UI-поток.
@@ -96,17 +99,24 @@ class ProxyEngine {
         onFound: (ProxyRow) -> Unit = {},
     ): List<ProxyRow> {
         val parsed = ProxyParser.parse(body)
-        return scanParsed(parsed, ProxyParser.MAX_RESULTS, config, onProgress, onFound)
+        return scanParsed(parsed, parsed.size, config, onProgress, onFound)
     }
 
+    /** Проверяет уже разобранные записи — например, собранные из встроенных фидов. */
+    suspend fun scanEntries(
+        entries: List<RawProxyEntry>,
+        config: ScanConfig,
+        onProgress: (ScanState) -> Unit = {},
+        onFound: (ProxyRow) -> Unit = {},
+    ): List<ProxyRow> = scanParsed(entries, entries.size, config, onProgress, onFound)
+
     private suspend fun scanParsed(
-        candidates: List<com.kupuproxy.shared.domain.model.RawProxyEntry>,
+        candidates: List<RawProxyEntry>,
         inputSize: Int,
         config: ScanConfig,
         onProgress: (ScanState) -> Unit,
         onFound: (ProxyRow) -> Unit,
     ): List<ProxyRow> = withContext(Dispatchers.IO) {
-        cancelled.set(false)
         if (candidates.isEmpty()) {
             onProgress(ScanState(running = false, total = inputSize))
             return@withContext emptyList()
@@ -126,11 +136,14 @@ class ProxyEngine {
         val found = AtomicInteger(0)
         val rows = java.util.Collections.synchronizedList(mutableListOf<ProxyRow>())
 
+        // Прогресс считается отдельно для каждой фазы: раньше счётчик фазы 1 (по записям
+        // в группах) продолжался в фазе 2, и полоса уходила за 100 % («750 / 500»).
+        var phaseTotal = 0
         fun emitPhase(phase: String) = onProgress(
             ScanState(
                 running = true,
-                processed = processed.get(),
-                total = selected.size,
+                processed = processed.get().coerceAtMost(phaseTotal),
+                total = phaseTotal,
                 found = found.get(),
                 phase = phase,
                 candidates = selected.size,
@@ -138,11 +151,12 @@ class ProxyEngine {
         )
 
         // Фаза 1 — TCP-префлайт по уникальным host:port.
-        emitPhase("Проверка доступности…")
-        val groups = selected.groupBy { "${it.protocol.name}:${it.host}:${it.port}" }
+        val groups = selected.groupBy { "${it.protocol.name}:${it.host.lowercase()}:${it.port}" }
         val groupList = groups.entries.toList()
+        phaseTotal = selected.size
+        emitPhase("Проверка доступности…")
         val groupCursor = AtomicInteger(0)
-        val reachable = java.util.Collections.synchronizedList(mutableListOf<List<com.kupuproxy.shared.domain.model.RawProxyEntry>>())
+        val reachable = java.util.Collections.synchronizedList(mutableListOf<List<RawProxyEntry>>())
 
         coroutineScope {
             List(config.parallelism.coerceAtMost(groupList.size)) {
@@ -155,22 +169,25 @@ class ProxyEngine {
                         if (ProxyProbe.isTcpReachable(head.host, head.port, (config.connectTimeoutMs / 2).coerceIn(500, 800))) {
                             reachable.add(group)
                         }
-                        val done = processed.addAndGet(group.size)
-                        if (done % 25 == 0) emitPhase("Проверка доступности…")
+                        val before = processed.getAndAdd(group.size)
+                        // Шаг группы может «перепрыгнуть» кратное 25 — сравниваем интервалы.
+                        if ((before + group.size) / 25 != before / 25) emitPhase("Проверка доступности…")
                     }
                 }
             }.awaitAll()
         }
 
         if (cancelled.get() || reachable.isEmpty()) {
-            onProgress(ScanState(running = false, processed = processed.get(), total = selected.size, found = found.get(), candidates = selected.size))
+            onProgress(ScanState(running = false, processed = processed.get().coerceAtMost(phaseTotal), total = phaseTotal, found = found.get(), candidates = selected.size))
             return@withContext rows.toList()
         }
 
         // Фаза 2 — полное рукопожатие протокола.
-        emitPhase("Проверка протокола…")
         val live = reachable.flatMap { it }
         val cursor = AtomicInteger(0)
+        processed.set(0)
+        phaseTotal = live.size
+        emitPhase("Проверка протокола…")
 
         coroutineScope {
             List(config.parallelism.coerceAtMost(live.size)) {
@@ -209,7 +226,7 @@ class ProxyEngine {
                             if (config.stopWhenFound > 0 && count >= config.stopWhenFound) cancelled.set(true)
                         }
                         val done = processed.incrementAndGet()
-                        if (done % 5 == 0 || done == selected.size) emitPhase("Проверка протокола…")
+                        if (done % 5 == 0 || done == live.size) emitPhase("Проверка протокола…")
                     }
                 }
             }.awaitAll()
@@ -218,8 +235,8 @@ class ProxyEngine {
         onProgress(
             ScanState(
                 running = false,
-                processed = processed.get(),
-                total = selected.size,
+                processed = processed.get().coerceAtMost(phaseTotal),
+                total = phaseTotal,
                 found = found.get(),
                 candidates = selected.size,
             ),

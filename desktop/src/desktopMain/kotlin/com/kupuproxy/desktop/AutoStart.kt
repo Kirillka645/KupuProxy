@@ -51,18 +51,30 @@ object AutoStart {
             entry.delete()
             return true
         }
-        val exe = AppPaths.launcher() ?: return false
+        val command = AppPaths.launchCommand().ifEmpty { return false }
+        val target = command.first()
+        val arguments = (command.drop(1).map(::quoteWindowsArg) + "--tray").joinToString(" ")
+        val workDir = java.io.File(command.last { it != "--tray" }).parentFile?.absolutePath ?: "."
         val ps = "New-Object -ComObject WScript.Shell | ForEach-Object { " +
-            "\$s = \$_.CreateShortcut('${entry.absolutePath.replace("'", "''")}'); " +
-            "\$s.TargetPath = '${exe.replace("'", "''")}'; " +
-            "\$s.Arguments = '--tray'; \$s.WorkingDirectory = '.'; \$s.Save() }"
+            "\$s = \$_.CreateShortcut('${entry.absolutePath.psQuote()}'); " +
+            "\$s.TargetPath = '${target.psQuote()}'; " +
+            "\$s.Arguments = '${arguments.psQuote()}'; " +
+            "\$s.WorkingDirectory = '${workDir.psQuote()}'; \$s.Save() }"
+        entry.parentFile?.mkdirs()
         return runCatching {
             val process = ProcessBuilder(
                 "powershell", "-NoProfile", "-NonInteractive", "-Command", ps,
             ).redirectErrorStream(true).start()
+            // Вывод PowerShell нужно вычитывать, иначе процесс может заблокироваться на полном буфере.
+            process.inputStream.readBytes()
             process.waitFor() == 0 && entry.exists()
         }.getOrDefault(false)
     }
+
+    private fun String.psQuote(): String = replace("'", "''")
+
+    private fun quoteWindowsArg(arg: String): String =
+        if (arg.any { it == ' ' || it == '\t' }) "\"$arg\"" else arg
 
     // endregion
 
@@ -83,7 +95,8 @@ object AutoStart {
             plist.delete()
             return true
         }
-        val exe = AppPaths.launcher() ?: return false
+        val command = AppPaths.launchCommand().ifEmpty { return false }
+        val programArguments = (command + "--tray").joinToString("") { "<string>${it.xmlEscape()}</string>" }
         val content = """
             <?xml version="1.0" encoding="UTF-8"?>
             <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -91,18 +104,20 @@ object AutoStart {
             <dict>
               <key>Label</key><string>app.kupuproxy.desktop</string>
               <key>ProgramArguments</key>
-              <array><string>$exe</string><string>--tray</string></array>
+              <array>$programArguments</array>
               <key>RunAtLoad</key><true/>
             </dict>
             </plist>
         """.trimIndent()
         plist.parentFile?.mkdirs()
         plist.writeText(content)
-        return runCatching {
-            ProcessBuilder("launchctl", "load", plist.absolutePath)
-                .redirectErrorStream(true).start().waitFor() == 0
-        }.getOrDefault(true)
+        // RunAtLoad срабатывает при следующем входе в систему; launchctl load сразу запустил
+        // бы вторую копию клиента, поэтому файла LaunchAgent достаточно.
+        return plist.exists()
     }
+
+    private fun String.xmlEscape(): String =
+        replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
     // endregion
 
@@ -119,7 +134,15 @@ object AutoStart {
             entry.delete()
             return true
         }
-        val exe = AppPaths.launcher() ?: return false
+        val command = AppPaths.launchCommand().ifEmpty { return false }
+        // Exec из спецификации Desktop Entry: аргументы с пробелами берутся в кавычки.
+        val exec = (command + "--tray").joinToString(" ") { arg ->
+            if (arg.any { it == ' ' || it == '"' || it == '\\' || it == '$' || it == '`' }) {
+                "\"" + arg.replace("\\", "\\\\").replace("\"", "\\\"").replace("$", "\\$").replace("`", "\\`") + "\""
+            } else {
+                arg
+            }
+        }
         entry.parentFile?.mkdirs()
         entry.writeText(
             """
@@ -127,7 +150,7 @@ object AutoStart {
             Type=Application
             Name=KupuProxy
             Comment=KupuProxy — поиск и проверка Telegram-прокси
-            Exec=$exe --tray
+            Exec=$exec
             Terminal=false
             X-GNOME-Autostart-enabled=true
             """.trimIndent(),

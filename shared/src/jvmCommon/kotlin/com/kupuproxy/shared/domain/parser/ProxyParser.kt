@@ -54,6 +54,13 @@ object ProxyParser {
     )
     private val SECRET_HEX = Regex("""(?i)^(?:dd|ee)?[0-9a-f]{32,}$""")
     private val SECRET_B64ISH = Regex("""(?i)^(?:dd|ee)?[0-9a-z+/=_\-]{32,}$""")
+
+    /**
+     * base64/base64url-секрет: 16 байт ключа (22 символа), `dd` + ключ (23) или
+     * `ee` + ключ + домен (от 23). Раньше требовалось минимум 32 символа, как для hex,
+     * и такие секреты отбрасывались — это примерно треть сводного списка proxy-feeds.
+     */
+    private val SECRET_B64_CHARS = Regex("""^[0-9A-Za-z+/_\-]{22,512}={0,2}$""")
     private val HTML_CODE =
         Regex("""<code[^>]*>(.*?)</code>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
     private val BASE64_WHOLE = Regex("""^[A-Za-z0-9+/=_-]+$""")
@@ -449,6 +456,16 @@ object ProxyParser {
     fun classifySecret(secret: String): SecretType {
         val value = secret.trim()
         val lower = value.lowercase(Locale.US)
+        if (!SECRET_HEX.matches(value)) {
+            decodeBase64Secret(value)?.let { raw ->
+                return when {
+                    raw.size >= 17 && raw[0] == 0xEE.toByte() -> SecretType.FAKE_TLS
+                    raw.size >= 17 && raw[0] == 0xDD.toByte() -> SecretType.PADDED
+                    raw.size == 16 -> SecretType.PLAIN
+                    else -> SecretType.UNKNOWN
+                }
+            }
+        }
         return when {
             lower.startsWith("ee") -> SecretType.FAKE_TLS
             lower.startsWith("dd") -> SecretType.PADDED
@@ -460,6 +477,13 @@ object ProxyParser {
 
     fun extractSni(secret: String, type: SecretType): String? {
         if (type != SecretType.FAKE_TLS) return null
+        if (!SECRET_HEX.matches(secret.trim())) {
+            val raw = decodeBase64Secret(secret.trim()) ?: return null
+            if (raw.size <= 17) return null
+            return String(raw.copyOfRange(17, raw.size), StandardCharsets.US_ASCII)
+                .trim { it < ' ' || it > '~' }
+                .takeIf { it.isNotBlank() && it.contains('.') }
+        }
         val hex = secret.drop(2)
         if (hex.length <= 32) return null
         return hexToBytes(hex.substring(32))?.let { bytes ->
@@ -471,7 +495,19 @@ object ProxyParser {
 
     fun looksLikeSecret(secret: String): Boolean {
         val value = secret.trim()
-        return value.length in 32..512 && (SECRET_HEX.matches(value) || SECRET_B64ISH.matches(value))
+        if (value.length in 32..512 && (SECRET_HEX.matches(value) || SECRET_B64ISH.matches(value))) return true
+        // Короткие base64-секреты проверяем по длине декодированного ключа, а не по символам.
+        return (decodeBase64Secret(value)?.size ?: 0) >= 16
+    }
+
+    /** Декодирует base64/base64url-секрет; `null` — не base64 или слишком короткий. */
+    private fun decodeBase64Secret(value: String): ByteArray? {
+        if (!SECRET_B64_CHARS.matches(value)) return null
+        return runCatching {
+            val b64 = value.trimEnd('=').replace('-', '+').replace('_', '/')
+            val pad = "=".repeat((4 - b64.length % 4) % 4)
+            java.util.Base64.getDecoder().decode(b64 + pad)
+        }.getOrNull()?.takeIf { it.size >= 16 }
     }
 
     fun isValidPort(port: Int): Boolean = port in 1..65535

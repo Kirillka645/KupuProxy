@@ -22,7 +22,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Существующий тег для публикации, например v1.4.0.2"
+        description: "Существующий тег для публикации, например v1.4.0.3"
         required: true
         type: string
 
@@ -156,6 +156,8 @@ jobs:
     needs: verify
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
+    # Флаг из matrix раньше нигде не применялся, и сбой .msi помечал весь запуск красным.
+    continue-on-error: ${{ matrix.continue-on-error == true }}
     strategy:
       fail-fast: false
       matrix:
@@ -185,6 +187,12 @@ jobs:
             name: macos-dmg
             task: :desktop:packageDmg
             ext: dmg
+          # Запускаемый jar для Windows (нужна установленная Java 17+). Skia-библиотеки
+          # в uber-jar платформенные, поэтому собирается на Windows-раннере.
+          - os: windows-latest
+            name: windows-jar
+            task: :desktop:packageUberJarForCurrentOS
+            fmt: jar
 
     steps:
       - uses: actions/checkout@v7
@@ -274,7 +282,11 @@ jobs:
             find desktop/build/compose/binaries/main -maxdepth 1 -type d -name 'KupuProxy*' | head -n1
           }
 
-          if [ "${FMT:-}" = "zip" ]; then
+          if [ "${FMT:-}" = "jar" ]; then
+            jar=$(find desktop/build/compose/jars -type f -name '*.jar' | head -n1)
+            [ -n "$jar" ] || { echo "::error::Uber-jar не найден"; exit 1; }
+            cp "$jar" "staged/KupuProxy-Desktop-${VERSION}-windows-x64.jar"
+          elif [ "${FMT:-}" = "zip" ]; then
             appdir=$(find_appdir)
             [ -n "$appdir" ] || { echo "::error::Каталог portable-сборки не найден"; exit 1; }
             echo "собираем windows-x64.zip из $appdir"
@@ -369,7 +381,19 @@ jobs:
           fi
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          branch="${{ github.event.repository.default_branch }}"
+          # Чекаут сделан по тегу (detached HEAD), а в ветку по умолчанию за это время могли
+          # прийти коммиты (зеркало proxy-feeds — каждые 4 часа). Прямой push HEAD:main
+          # тогда отклоняется как non-fast-forward, поэтому коммитим поверх свежей ветки.
+          cp update_manifest.json "$RUNNER_TEMP/update_manifest.json"
+          git fetch --no-tags origin "$branch"
+          git checkout -B "$branch" "origin/$branch"
+          cp "$RUNNER_TEMP/update_manifest.json" update_manifest.json
+          if git diff --quiet -- update_manifest.json; then
+            echo "Манифест в $branch уже актуален"
+            exit 0
+          fi
           git add update_manifest.json
           git commit -m "chore(release): обновить манифест автообновления"
-          git push origin "HEAD:${{ github.event.repository.default_branch }}"
+          git push origin "HEAD:$branch"
           echo "Манифест закоммичен в ${{ github.event.repository.default_branch }}"

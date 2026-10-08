@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -59,11 +60,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
 import com.kupuproxy.desktop.AppState
 import com.kupuproxy.desktop.ThemeMode
 import com.kupuproxy.desktop.AutoStartBridge
 import com.kupuproxy.desktop.DesktopTab
 import com.kupuproxy.desktop.ProxyRow
+import com.kupuproxy.desktop.StockFeeds
 import com.kupuproxy.desktop.ScanState
 import com.kupuproxy.desktop.TrafficStats
 import com.kupuproxy.desktop.pickProxyFile
@@ -237,7 +240,8 @@ private fun DashboardScreen(state: AppState) {
         if (rows.isEmpty()) {
             EmptyState(
                 title = "Прокси ещё не проверены",
-                subtitle = "Откройте «Источники», выберите файл или URL со списком и запустите скан.",
+                subtitle = "Нажмите «Запустить скан» — будут проверены встроенные источники. " +
+                    "Свои файлы и URL добавляются в разделе «Источники».",
             )
         } else {
             rows.take(5).forEach { row -> TopRow(row) }
@@ -283,16 +287,17 @@ private fun TopRow(row: ProxyRow) {
 
 @Composable
 private fun ScanButton(state: AppState) {
-    if (state.scan.running) {
-        OutlinedButton(onClick = { state.cancelScan() }) {
+    if (state.busy) {
+        OutlinedButton(onClick = { state.cancelScan() }, modifier = Modifier.height(KupuControl.buttonHeight)) {
             Icon(Icons.Filled.Stop, contentDescription = null, modifier = Modifier.size(18.dp))
             HSpace(KupuSpacing.sm)
             Text("Стоп")
         }
     } else {
+        // Сразу сканирует встроенные источники из proxy-feeds — без поиска файлов и URL.
         Button(
-            onClick = { state.tab = DesktopTab.SOURCES },
-            modifier = Modifier.height(KupuControl.buttonHeight).width(180.dp),
+            onClick = { state.scanStock() },
+            modifier = Modifier.height(KupuControl.buttonHeight).widthIn(min = 200.dp),
         ) {
             Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
             HSpace(KupuSpacing.sm)
@@ -333,7 +338,7 @@ fun ScanProgress(scan: ScanState) {
                     }
                     VSpace(KupuSpacing.sm)
                     LinearProgressIndicator(
-                        progress = { if (scan.total > 0) scan.processed.toFloat() / scan.total else 0f },
+                        progress = { if (scan.total > 0) (scan.processed.toFloat() / scan.total).coerceIn(0f, 1f) else 0f },
                         modifier = Modifier.fillMaxWidth().height(6.dp),
                     )
                 }
@@ -378,7 +383,7 @@ private fun ProxiesScreen(state: AppState, onOpenTelegram: (String) -> Unit) {
                 Slider(
                     value = state.settings.maxLatencyFilterMs.toFloat(),
                     onValueChange = { value ->
-                        state.updateSettings { it.copy(maxLatencyFilterMs = value.toInt()) }
+                        state.updateSettings { it.copy(maxLatencyFilterMs = (value / 50f).roundToInt() * 50) }
                     },
                     valueRange = 100f..8_000f,
                     modifier = Modifier.fillMaxWidth(),
@@ -446,7 +451,7 @@ private fun ProxiesScreen(state: AppState, onOpenTelegram: (String) -> Unit) {
                     KeyValueRow("Jitter", "${selected.jitterMs} ms")
                     KeyValueRow("Замеров", selected.samples.toString())
                 }
-                KeyValueRow("Качество", selected.quality.name.lowercase())
+                KeyValueRow("Качество", qualityLabel(selected.quality))
 
                 VSpace(KupuSpacing.xs)
                 Button(
@@ -459,11 +464,11 @@ private fun ProxiesScreen(state: AppState, onOpenTelegram: (String) -> Unit) {
                 val tunnelling = selected.protocol != ProxyProtocol.MTPROTO
                 Button(
                     onClick = { state.toggleLocalProxy() },
-                    enabled = tunnelling,
+                    enabled = tunnelling || state.localProxyRunning,
                     modifier = Modifier.fillMaxWidth().height(KupuControl.buttonHeight),
                 ) {
                     Text(
-                        if (state.localProxy.isRunning) "Остановить прокси" else "Включить локальный прокси",
+                        if (state.localProxyRunning) "Остановить прокси" else "Включить локальный прокси",
                         fontWeight = FontWeight.SemiBold,
                     )
                 }
@@ -480,9 +485,15 @@ private fun ProxiesScreen(state: AppState, onOpenTelegram: (String) -> Unit) {
             HorizontalDivider()
             VSpace(KupuSpacing.sm)
 
-            if (state.localProxy.isRunning) {
+            if (state.localProxyRunning) {
                 Text("Локальный прокси", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 KeyValueRow("Адрес", "127.0.0.1:${state.localProxy.localPort}")
+                state.localProxy.currentTarget?.let { KeyValueRow("Через", "${it.host}:${it.port}") }
+                Text(
+                    "Укажите 127.0.0.1:${state.localProxy.localPort} как HTTP-прокси в браузере или системе.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant,
+                )
                 KeyValueRow("Отправлено", state.traffic.formatBytes(state.traffic.upBytes))
                 KeyValueRow("Получено", state.traffic.formatBytes(state.traffic.downBytes))
                 KeyValueRow("Соединений", state.traffic.connections.toString())
@@ -569,9 +580,16 @@ private fun SourcesScreen(state: AppState) {
         )
 
         VSpace(KupuSpacing.sm)
+        StockFeedsBlock(state)
+
+        VSpace(KupuSpacing.sm)
         Text("Локальный файл", style = MaterialTheme.typography.titleMedium)
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Button(onClick = { state.scanFile(pickProxyFile()) }, modifier = Modifier.height(KupuControl.buttonHeight)) {
+            Button(
+                onClick = { pickProxyFile()?.let(state::scanFile) },
+                enabled = !state.busy,
+                modifier = Modifier.height(KupuControl.buttonHeight),
+            ) {
                 Icon(Icons.Filled.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
                 HSpace(KupuSpacing.sm)
                 Text("Выбрать файл…", fontWeight = FontWeight.SemiBold)
@@ -621,6 +639,83 @@ private fun SourcesScreen(state: AppState) {
     }
 }
 
+/** Встроенные источники из каталога proxy-feeds репозитория. */
+@Composable
+private fun StockFeedsBlock(state: AppState) {
+    val scheme = MaterialTheme.colorScheme
+    Card(
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(containerColor = scheme.surface),
+        border = androidx.compose.foundation.BorderStroke(1.dp, scheme.outlineVariant),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(KupuSpacing.cardPadding), verticalArrangement = Arrangement.spacedBy(KupuSpacing.sm)) {
+            Text("Встроенные источники", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Зеркала proxy-feeds из репозитория KupuProxy, обновляются каждые 4 часа. " +
+                    "Порядок загрузки: GitHub → jsDelivr → снимок внутри приложения" +
+                    (StockFeeds.bundledSnapshotDate()?.let { " (от $it)" } ?: "") + ".",
+                style = MaterialTheme.typography.bodySmall,
+                color = scheme.onSurfaceVariant,
+            )
+            StockFeeds.all.forEach { feed ->
+                val status = state.feedStatuses.firstOrNull { it.feedId == feed.id }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(feed.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                            HSpace(KupuSpacing.sm)
+                            ProtocolBadge(feed.protocol)
+                        }
+                        Text(
+                            feed.description + when {
+                                status == null -> ""
+                                status.count > 0 -> " · ${status.count} шт. (${status.origin?.label ?: "—"})"
+                                else -> " · ошибка: ${status.error ?: "нет данных"}"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (status != null && status.count == 0) scheme.error else scheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = feed.id in state.settings.stockFeeds,
+                        onCheckedChange = { state.toggleStockFeed(feed.id) },
+                        enabled = !state.busy,
+                    )
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(KupuSpacing.md), verticalAlignment = Alignment.CenterVertically) {
+                Button(
+                    onClick = { state.scanStock() },
+                    enabled = !state.busy && state.settings.stockFeeds.isNotEmpty(),
+                    modifier = Modifier.height(KupuControl.buttonHeight),
+                ) {
+                    Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                    HSpace(KupuSpacing.sm)
+                    Text("Сканировать встроенные", fontWeight = FontWeight.SemiBold)
+                }
+                OutlinedButton(
+                    onClick = { state.scanStock(offline = true) },
+                    enabled = !state.busy && state.settings.stockFeeds.isNotEmpty(),
+                    modifier = Modifier.height(KupuControl.buttonHeight),
+                ) {
+                    Text("Без загрузки (снимок)")
+                }
+                if (state.busy) {
+                    TextButton(onClick = { state.cancelScan() }) { Text("Стоп") }
+                }
+            }
+            if (state.sourceLabel != "—") {
+                Text(
+                    "Последний источник: ${state.sourceLabel}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun UrlScanBlock(state: AppState) {
     var url by remember { mutableStateOf("") }
@@ -632,9 +727,11 @@ private fun UrlScanBlock(state: AppState) {
             singleLine = true,
             modifier = Modifier.weight(1f),
         )
+        val trimmed = url.trim()
+        val valid = trimmed.startsWith("https://", true) || trimmed.startsWith("http://", true)
         Button(
-            onClick = { if (url.isNotBlank()) state.scanUrl(url.trim()) },
-            enabled = url.isNotBlank(),
+            onClick = { if (valid) state.scanUrl(trimmed) },
+            enabled = valid && !state.busy,
             modifier = Modifier.height(KupuControl.buttonHeight),
         ) {
             Text("Загрузить", fontWeight = FontWeight.SemiBold)
@@ -720,7 +817,7 @@ private fun SettingsScreen(state: AppState) {
         )
         Slider(
             value = settings.jitterSamples.toFloat(),
-            onValueChange = { value -> state.updateSettings { it.copy(jitterSamples = value.toInt()) } },
+            onValueChange = { value -> state.updateSettings { it.copy(jitterSamples = value.roundToInt().coerceIn(1, 5)) } },
             valueRange = 1f..5f,
             steps = 3,
         )
@@ -731,7 +828,7 @@ private fun SettingsScreen(state: AppState) {
         )
         Slider(
             value = settings.maxToCheck.toFloat(),
-            onValueChange = { value -> state.updateSettings { it.copy(maxToCheck = value.toInt()) } },
+            onValueChange = { value -> state.updateSettings { it.copy(maxToCheck = (value / 50f).roundToInt() * 50) } },
             valueRange = 100f..10_000f,
         )
 
@@ -739,7 +836,7 @@ private fun SettingsScreen(state: AppState) {
 
         Text("Данные", style = MaterialTheme.typography.titleMedium)
         TextButton(onClick = { state.resetTraffic() }) { Text("Сбросить статистику трафика") }
-        TextButton(onClick = { state.favorites.forEach { state.toggleFavorite(it) } }) {
+        TextButton(onClick = { state.clearFavorites() }, enabled = settings.favorites.isNotEmpty()) {
             Text("Очистить избранное (${settings.favorites.size})")
         }
 
@@ -774,4 +871,11 @@ fun LoadingIndicator() {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         CircularProgressIndicator()
     }
+}
+private fun qualityLabel(quality: LinkQuality): String = when (quality) {
+    LinkQuality.EXCELLENT -> "отличное"
+    LinkQuality.GOOD -> "хорошее"
+    LinkQuality.FAIR -> "среднее"
+    LinkQuality.POOR -> "слабое"
+    LinkQuality.UNKNOWN -> "неизвестно"
 }

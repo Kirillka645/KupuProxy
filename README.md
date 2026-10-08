@@ -102,30 +102,31 @@ java -jar desktop/build/compose/jars/KupuProxy-windows-x64-1.4.0.jar
 
 # Linux: .deb
 ./gradlew :desktop:packageDeb
-# desktop/build/compose/binaries/main/deb/kupuproxy_1.4.0_amd64.deb
+# desktop/build/compose/binaries/main/deb/kupuproxy_1.4.3-1_amd64.deb
 
-# Linux: portable .tar.gz
-./gradlew :desktop:packageDistributionForCurrentOS
-# desktop/build/compose/binaries/main/tar/kupuproxy-1.4.0.tar.gz
+# Linux: portable .tar.gz (из portable-образа)
+./gradlew :desktop:createDistributable
+tar -czf KupuProxy-Desktop-linux-x64.tar.gz -C desktop/build/compose/binaries/main/app KupuProxy
 
 # macOS: .dmg
 ./gradlew :desktop:packageDmg
-# desktop/build/compose/binaries/main/dmg/KupuProxy-1.4.0.dmg
+# desktop/build/compose/binaries/main/dmg/KupuProxy-1.4.3.dmg
 ```
 
 > `jpackage` требует версию в формате `MAJOR.MINOR.BUILD`, поэтому «маркетинговая» версия
-> `1.4.0.2` упаковывается как `1.4.0`. Полная версия доступна внутри приложения и в окне
-> «О программе».
+> `1.4.0.3` упаковывается как `1.4.3` (последняя цифра становится BUILD, чтобы номер рос
+> от релиза к релизу). Полная версия показывается в заголовке окна и в трее.
 
 > Сборка `.msi` дополнительно требует **WiX Toolset 3.x** — он нужен `jpackage` на Windows.
 > Остальные форматы (`.deb`, `.dmg`, portable, `.tar.gz`) собираются без него.
-> Portable-сборка на Windows — `createDistributable`, на Linux — `packageDistributionForCurrentOS`.
+> Portable-сборка и на Windows, и на Linux — `createDistributable`
+> (`packageDistributionForCurrentOS` на Linux собирает тот же `.deb`).
 
 Запуск сразу на нужном разделе:
 
 ```bash
-java -jar KupuProxy-windows-x64-1.4.0.jar --tab=proxies
-java -jar KupuProxy-windows-x64-1.4.0.jar --tray      # стартовать свёрнутым в трей
+java -jar KupuProxy-Desktop-1.4.0.3.jar --tab=proxies
+java -jar KupuProxy-Desktop-1.4.0.3.jar --tray      # стартовать свёрнутым в трей
 ```
 
 ### Обновление манифеста автообновления
@@ -137,7 +138,7 @@ java -jar KupuProxy-windows-x64-1.4.0.jar --tray      # стартовать с�
 ./gradlew assembleRelease
 pwsh tools/release/update-manifest.ps1 \
   -ApkPath app/build/outputs/apk/release/app-release.apk \
-  -Version 1.4.0.2 \
+  -Version 1.4.0.3 \
   -Changelog "Краткое описание релиза."
 ```
 
@@ -164,7 +165,7 @@ work/       фоновые проверки и обновления
 
 ## English
 
-KupuProxy collects and independently verifies Telegram proxies. Version 1.4.0.2 adds a desktop client for Windows, Linux and macOS built on Compose Multiplatform, sharing one Kotlin core with the Android app, and adds SOCKS5, HTTP and WEB proxy support alongside MTProto. Availability checks now run a fast TCP preflight per host before the full protocol handshake, measure jitter across several samples, and colour-code connection quality. The brand palette is unified across both clients.
+KupuProxy collects and independently verifies Telegram proxies. Version 1.4.0.3 gives the desktop client built-in proxy sources (the repository's `proxy-feeds/` mirrors with a CDN fallback and an offline snapshot) and fixes the local proxy tunnel, autostart and file picker. Version 1.4.0.2 added a desktop client for Windows, Linux and macOS built on Compose Multiplatform, sharing one Kotlin core with the Android app, and adds SOCKS5, HTTP and WEB proxy support alongside MTProto. Availability checks now run a fast TCP preflight per host before the full protocol handshake, measure jitter across several samples, and colour-code connection quality. The brand palette is unified across both clients.
 
 Download the APK from [GitHub Releases](https://github.com/Kirillka645/KupuProxy/releases/latest). No advertising SDKs, analytics, or trackers are included.
 

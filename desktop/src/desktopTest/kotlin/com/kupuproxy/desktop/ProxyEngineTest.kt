@@ -223,4 +223,19 @@ class ProxyEngineTest {
         val target = LocalProxyServer.Target("h", 1, ProxyProtocol.MTPROTO, null, null)
         assertFalse(target.supportsTunnelling)
     }
+
+    @Test
+    fun progressNeverExceedsTotal() = runTest {
+        val port = startSocks5Server()
+        val dead = startDeadPort()
+        val states = java.util.Collections.synchronizedList(mutableListOf<ScanState>())
+        val engine = ProxyEngine()
+        engine.scan(
+            urls = listOf("socks5://127.0.0.1:$port", "socks5://127.0.0.1:$dead", "socks5://u:p@127.0.0.1:$port"),
+            config = ScanConfig(jitterSamples = 1, maxToCheck = 50),
+            onProgress = { states += it },
+        )
+        assertTrue(states.isNotEmpty())
+        assertTrue(states.all { it.processed <= it.total }, states.toString())
+    }
 }

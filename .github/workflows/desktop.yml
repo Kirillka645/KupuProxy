@@ -52,6 +52,8 @@ jobs:
     needs: test
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
+    # Флаг из matrix раньше нигде не применялся, и сбой .msi помечал весь запуск красным.
+    continue-on-error: ${{ matrix.continue-on-error == true }}
     strategy:
       fail-fast: false
       matrix:

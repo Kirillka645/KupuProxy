@@ -4,6 +4,7 @@ import com.kupuproxy.shared.domain.model.ProxyProtocol
 import com.kupuproxy.shared.domain.model.SecretType
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -324,4 +325,26 @@ class ProxyParserTest {
     }
 
     // endregion
+
+    @Test
+    fun acceptsShortBase64Secrets() {
+        // Реальные записи из proxy-feeds/mtproto_merged.txt: base64url-секреты короче 32 символов.
+        val body = listOf(
+            "tg://proxy?server=161.0.16.189&port=443&secret=7miqLUFWdxDDUaK14c3hRjl2ay5jb20",
+            "tg://proxy?server=194.120.230.106&port=443&secret=3XnnAQIAAQAH8AMDhuJMOt0",
+        ).joinToString("\n")
+        val entries = ProxyParser.parse(body)
+        assertEquals(2, entries.size)
+        val fakeTls = entries.first { it.host == "161.0.16.189" }
+        assertEquals(SecretType.FAKE_TLS, fakeTls.secretType)
+        assertEquals("vk.com", fakeTls.sniDomain)
+        assertEquals(SecretType.PADDED, entries.first { it.host == "194.120.230.106" }.secretType)
+    }
+
+    @Test
+    fun rejectsTooShortSecrets() {
+        assertFalse(ProxyParser.looksLikeSecret("abc"))
+        assertFalse(ProxyParser.looksLikeSecret("QUJDREVGR0hJSktMTU5P")) // 15 байт
+        assertTrue(ProxyParser.looksLikeSecret("QUJDREVGR0hJSktMTU5PUA")) // 16 байт
+    }
 }
