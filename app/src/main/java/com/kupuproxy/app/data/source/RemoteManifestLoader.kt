@@ -2,7 +2,7 @@ package com.kupuproxy.app.data.source
 
 import com.kupuproxy.app.BuildConfig
 import com.kupuproxy.app.data.remote.HttpSupport
-import com.kupuproxy.app.domain.model.SourceKind
+import com.kupuproxy.shared.domain.model.SourceKind
 import com.kupuproxy.app.domain.source.ProxySource
 import okhttp3.OkHttpClient
 import org.json.JSONObject

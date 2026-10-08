@@ -1,12 +1,13 @@
 package com.kupuproxy.app.domain.aggregator
 
 import com.kupuproxy.app.core.Constants
-import com.kupuproxy.app.domain.model.AggregateScanResult
-import com.kupuproxy.app.domain.model.ProxyEndpoint
-import com.kupuproxy.app.domain.model.ProxyError
-import com.kupuproxy.app.domain.model.RawProxyEntry
-import com.kupuproxy.app.domain.model.SourceResult
-import com.kupuproxy.app.domain.parser.ProxyParser
+import com.kupuproxy.shared.domain.model.AggregateScanResult
+import com.kupuproxy.shared.domain.model.ProxyEndpoint
+import com.kupuproxy.shared.domain.model.ProxyError
+import com.kupuproxy.shared.domain.model.ProxyProtocol
+import com.kupuproxy.shared.domain.model.RawProxyEntry
+import com.kupuproxy.shared.domain.model.SourceResult
+import com.kupuproxy.shared.domain.parser.ProxyParser
 import com.kupuproxy.app.domain.source.ProxySource
 import java.net.InetAddress
 import kotlin.random.Random
@@ -96,8 +97,11 @@ class ProxyAggregator(
             val host: String,
             val port: Int,
             val secret: String,
-            val type: com.kupuproxy.app.domain.model.SecretType,
+            val protocol: ProxyProtocol,
+            val type: com.kupuproxy.shared.domain.model.SecretType,
             var sni: String?,
+            val username: String?,
+            val password: String?,
             val sources: MutableSet<String>,
             var region: String?,
             var upstreamPingMs: Int?,
@@ -110,7 +114,9 @@ class ProxyAggregator(
         for (e in entries) {
             if (!ProxyParser.isValidPort(e.port)) continue
             if (ProxyParser.isPrivateOrReservedHost(e.host)) continue
-            if (!ProxyParser.looksLikeSecret(e.secret)) continue
+            // Секрет обязателен только для MTProto: у SOCKS5/HTTP/WEB его нет,
+            // и проверка looksLikeSecret отбрасывала бы все такие прокси.
+            if (e.protocol == ProxyProtocol.MTPROTO && !ProxyParser.looksLikeSecret(e.secret)) continue
 
             val hostKey = if (resolveDns) {
                 try {
@@ -120,15 +126,18 @@ class ProxyAggregator(
                 }
             } else e.host
 
-            val key = "${hostKey.lowercase()}:${e.port}:${e.secret.lowercase()}"
+            val key = "${e.protocol.name}:${hostKey.lowercase()}:${e.port}:${e.secret.lowercase()}"
             val acc = byKey.getOrPut(key) {
                 Acc(
                     url = e.url,
                     host = e.host,
                     port = e.port,
                     secret = e.secret,
+                    protocol = e.protocol,
                     type = e.secretType,
                     sni = e.sniDomain,
+                    username = e.username,
+                    password = e.password,
                     sources = mutableSetOf(),
                     region = e.region,
                     upstreamPingMs = e.upstreamPingMs,
@@ -156,8 +165,11 @@ class ProxyAggregator(
                 host = it.host,
                 port = it.port,
                 secret = it.secret,
+                protocol = it.protocol,
                 secretType = it.type,
                 sniDomain = it.sni,
+                username = it.username,
+                password = it.password,
                 sourceIds = it.sources.toSet(),
                 reliabilityScore = it.sources.size.coerceAtLeast(1),
                 region = it.region,

@@ -9,14 +9,22 @@ enum class ThemeMode {
     DARK,
 }
 
+/**
+ * Палитры оформления.
+ *
+ * [ColorPalette.KUPU] — фирменная: значения взяты из темы окна (`res/values/colors.xml`)
+ * и из иконки приложения, которая рисуется в `#00C2A8` на `#0B1220`. Раньше здесь стоял
+ * `#006C61` из Material Theme Builder, из-за чего Compose-интерфейс не совпадал
+ * с иконкой и со стартовым экраном.
+ */
 enum class ColorPalette(val primary: Long, val accent: Long) {
-    KUPU(0xFF006C61, 0xFF17324D),
+    KUPU(0xFF00C2A8, 0xFF5B6CFF),
     OCEAN(0xFF00639A, 0xFF4C5D92),
     VIOLET(0xFF6750A4, 0xFF7D5260),
     SUNSET(0xFF9C423D, 0xFF76546F),
     FOREST(0xFF386A20, 0xFF55624C),
     MONO(0xFF444746, 0xFF5F6368),
-    CUSTOM(0xFF006C61, 0xFF17324D),
+    CUSTOM(0xFF00C2A8, 0xFF5B6CFF),
 }
 
 enum class CornerStyle {

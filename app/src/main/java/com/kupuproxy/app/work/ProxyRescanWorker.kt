@@ -32,7 +32,7 @@ class ProxyRescanWorker(
             val aggregator = ProxyAggregator(client)
             val sources = ProxySourceRegistry.backgroundRefreshSources()
             val result = aggregator.collect(sources)
-            val kortResult = result.sourceResults.filterIsInstance<com.kupuproxy.app.domain.model.SourceResult.Success>()
+            val kortResult = result.sourceResults.filterIsInstance<com.kupuproxy.shared.domain.model.SourceResult.Success>()
                 .firstOrNull { it.sourceId == KortCollectorSource.ID }
             val stats = KortCollectorSource.fetchStats(client)
             if (kortResult != null && kortResult.entries.isNotEmpty()) {

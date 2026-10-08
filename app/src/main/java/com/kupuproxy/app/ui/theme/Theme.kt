@@ -14,10 +14,12 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
@@ -27,45 +29,78 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-private val Teal = Color(0xFF006C61)
-private val TealLight = Color(0xFF6FDBC9)
-private val Navy = Color(0xFF17324D)
-private val Amber = Color(0xFF8A5100)
+private val Teal = Color(0xFF00C2A8)
+private val TealLight = Color(0xFF3DDFC8)
+private val Indigo = Color(0xFF5B6CFF)
+private val IndigoLight = Color(0xFFA8B2FF)
+private val Coral = Color(0xFFFF7A59)
+private val CoralLight = Color(0xFFFF9B82)
+
+/**
+ * Цвета индикаторов задержки. Раньше они были объявлены в `res/values/colors.xml`
+ * (`ping_excellent/good/slow`), но нигде не использовались: статус прокси передавался
+ * только порядком в списке.
+ */
+data class KupuStatusColors(
+    val excellent: Color,
+    val good: Color,
+    val fair: Color,
+    val poor: Color,
+    val offline: Color,
+)
+
+val LocalStatusColors: ProvidableCompositionLocal<KupuStatusColors> = staticCompositionLocalOf {
+    KupuStatusColors(
+        excellent = Color(0xFF12B76A),
+        good = Color(0xFFF79009),
+        fair = Color(0xFFF04438),
+        poor = Color(0xFFBA1A1A),
+        offline = Color(0xFF6F7976),
+    )
+}
 
 private val BaseLightColors =
     lightColorScheme(
         primary = Teal,
         onPrimary = Color.White,
-        primaryContainer = Color(0xFFA9F2E4),
-        onPrimaryContainer = Color(0xFF00201B),
-        secondary = Navy,
+        primaryContainer = Color(0xFFD4F7F1),
+        onPrimaryContainer = Color(0xFF003730),
+        secondary = Indigo,
         onSecondary = Color.White,
-        secondaryContainer = Color(0xFFD3E4FF),
-        onSecondaryContainer = Color(0xFF001C38),
-        tertiary = Amber,
-        surface = Color(0xFFF8FAFA),
-        surfaceVariant = Color(0xFFDAE5E1),
-        onSurface = Color(0xFF171D1B),
-        onSurfaceVariant = Color(0xFF3F4946),
-        outline = Color(0xFF6F7976),
+        secondaryContainer = Color(0xFFE0E4FF),
+        onSecondaryContainer = Color(0xFF121848),
+        tertiary = Coral,
+        onTertiary = Color.White,
+        background = Color(0xFFF4F7FB),
+        onBackground = Color(0xFF0F172A),
+        surface = Color(0xFFFFFFFF),
+        surfaceVariant = Color(0xFFE8EEF5),
+        onSurface = Color(0xFF0F172A),
+        onSurfaceVariant = Color(0xFF5B6B7C),
+        outline = Color(0xFFC9D4E0),
+        outlineVariant = Color(0xFFC9D4E0),
     )
 
 private val BaseDarkColors =
     darkColorScheme(
         primary = TealLight,
         onPrimary = Color(0xFF003730),
-        primaryContainer = Color(0xFF005047),
-        onPrimaryContainer = Color(0xFFA9F2E4),
-        secondary = Color(0xFFA1C9F7),
-        onSecondary = Color(0xFF00315C),
-        secondaryContainer = Color(0xFF194872),
-        onSecondaryContainer = Color(0xFFD3E4FF),
-        tertiary = Color(0xFFFFB95F),
-        surface = Color(0xFF0F1513),
-        surfaceVariant = Color(0xFF3F4946),
-        onSurface = Color(0xFFE0E3E1),
-        onSurfaceVariant = Color(0xFFBEC9C5),
-        outline = Color(0xFF89938F),
+        primaryContainer = Color(0xFF0A3D36),
+        onPrimaryContainer = Color(0xFFD4F7F1),
+        secondary = IndigoLight,
+        onSecondary = Color(0xFF121848),
+        secondaryContainer = Color(0xFF2A3370),
+        onSecondaryContainer = Color(0xFFE0E4FF),
+        tertiary = CoralLight,
+        onTertiary = Color(0xFF5A1500),
+        background = Color(0xFF0B1220),
+        onBackground = Color(0xFFE8EEF7),
+        surface = Color(0xFF121A2B),
+        surfaceVariant = Color(0xFF1A2438),
+        onSurface = Color(0xFFE8EEF7),
+        onSurfaceVariant = Color(0xFF9AABC0),
+        outline = Color(0xFF2C3A52),
+        outlineVariant = Color(0xFF2C3A52),
     )
 
 private val KupuTypography =
@@ -113,9 +148,20 @@ fun KupuProxyTheme(
             else -> personalizedScheme(settings, darkTheme)
         }
     val density = LocalDensity.current
+    val statusColors =
+        remember(colors, darkTheme) {
+            KupuStatusColors(
+                excellent = if (darkTheme) Color(0xFF32D583) else Color(0xFF12B76A),
+                good = if (darkTheme) Color(0xFFFDB022) else Color(0xFFF79009),
+                fair = if (darkTheme) Color(0xFFF97066) else Color(0xFFF04438),
+                poor = colors.error,
+                offline = colors.onSurfaceVariant,
+            )
+        }
     CompositionLocalProvider(
         LocalDensity provides
-            Density(density.density, density.fontScale * settings.fontScale.multiplier)
+            Density(density.density, density.fontScale * settings.fontScale.multiplier),
+        LocalStatusColors provides statusColors,
     ) {
         MaterialTheme(
             colorScheme = colors,

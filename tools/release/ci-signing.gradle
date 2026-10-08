@@ -1,0 +1,38 @@
+// Gradle init script: подменяет ключ подписи release-сборки в CI.
+//
+// Используется вместо правки build.gradle.kts: файл сборки остаётся нетронутым, а локальные
+// сборки продолжают подписываться тем же ключом, что и раньше.
+//
+// Проект подписывает release сборку конфигурацией "debug" (см. app/build.gradle.kts), поэтому
+// скрипт не создаёт новую конфигурацию — их нельзя добавлять после оценки проекта, — а
+// перенастраивает существующую. Сборка по-прежнему ссылается на "debug" и подхватывает новый ключ.
+//
+// Требуемые переменные окружения:
+//   KUPU_KEYSTORE_PATH      путь к .jks
+//   KUPU_KEYSTORE_PASSWORD  пароль хранилища
+//   KUPU_KEY_ALIAS          alias ключа
+//   KUPU_KEY_PASSWORD       пароль ключа
+//
+// Без KUPU_KEYSTORE_PATH скрипт не делает ничего.
+
+gradle.beforeProject { project ->
+    project.pluginManager.withPlugin("com.android.application") {
+        def keystorePath = System.getenv("KUPU_KEYSTORE_PATH")
+        if (!keystorePath) {
+            return
+        }
+        def extension = project.extensions.findByName("android")
+        if (extension == null) {
+            return
+        }
+        def debugSigning = extension.signingConfigs.findByName("debug")
+        if (debugSigning == null) {
+            return
+        }
+        debugSigning.storeFile = project.file(keystorePath)
+        debugSigning.storePassword = System.getenv("KUPU_KEYSTORE_PASSWORD")
+        debugSigning.keyAlias = System.getenv("KUPU_KEY_ALIAS")
+        debugSigning.keyPassword = System.getenv("KUPU_KEY_PASSWORD")
+        println("[ci-signing] release будет подписан ключом $keystorePath (alias ${System.getenv('KUPU_KEY_ALIAS')})")
+    }
+}

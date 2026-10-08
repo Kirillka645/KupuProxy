@@ -6,7 +6,7 @@ import com.kupuproxy.app.data.source.MtproXyzSource
 import com.kupuproxy.app.data.source.TelegramMegaSource
 import com.kupuproxy.app.data.source.TelegramWebPreviewSource
 import com.kupuproxy.app.data.source.UrlListProxySource
-import com.kupuproxy.app.domain.model.SourceKind
+import com.kupuproxy.shared.domain.model.SourceKind
 
 object ProxySourceRegistry {
 

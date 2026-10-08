@@ -1,0 +1,190 @@
+name: Desktop CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+    paths:
+      - "desktop/**"
+      - "shared/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - ".github/workflows/desktop.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "desktop/**"
+      - "shared/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Shared + desktop tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Unit tests
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon :shared:desktopTest :desktop:desktopTest
+
+  package:
+    name: Package ${{ matrix.name }}
+    needs: test
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    # Флаг из matrix раньше нигде не применялся, и сбой .msi помечал весь запуск красным.
+    continue-on-error: ${{ matrix.continue-on-error == true }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: Windows (.msi)
+            task: :desktop:packageMsi
+            ext: msi
+            continue-on-error: true
+          - os: windows-latest
+            name: Windows (portable)
+            task: :desktop:createDistributable
+            fmt: zip
+          - os: ubuntu-latest
+            name: Linux (.deb)
+            task: :desktop:packageDeb
+            ext: deb
+          # packageDistributionForCurrentOS на Linux собирает тот же .deb,
+          # поэтому .tar.gz получаем из portable-образа.
+          - os: ubuntu-latest
+            name: Linux (tar.gz)
+            task: :desktop:createDistributable
+            fmt: targz
+          - os: macos-latest
+            name: macOS (.dmg)
+            task: :desktop:packageDmg
+            ext: dmg
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      # Сборка .msi в jpackage требует WiX Toolset 3.x, которого на образе может не быть.
+      # Ставим его; если не выйдет, .msi пропустим, а остальные форматы соберутся.
+      - name: Установить WiX для сборки .msi
+        if: runner.os == 'Windows' && endsWith(matrix.name, '.msi')
+        shell: pwsh
+        run: |
+          if (Get-Command light.exe -ErrorAction SilentlyContinue) {
+            Write-Host "WiX уже доступен"
+            exit 0
+          }
+          $wix = Get-ChildItem "${env:ProgramFiles(x86)}\WiX Toolset*\*\bin\light.exe" -ErrorAction SilentlyContinue
+          if ($wix) {
+            Add-Content -Path $env:GITHUB_PATH -Value (Split-Path -Parent $wix[0].FullName)
+            Write-Host "WiX найден"
+            exit 0
+          }
+          Write-Host "::group::Устанавливаем WiX Toolset"
+          choco install wixtoolset --yes --no-progress --limit-output
+          choco install wixtoolset --version=3.11.2 --yes --no-progress --limit-output
+          Write-Host "::endgroup::"
+          $after = Get-ChildItem "C:\Program Files (x86)\WiX Toolset*\bin\light.exe" -ErrorAction SilentlyContinue
+          if ($after) {
+            Add-Content -Path $env:GITHUB_PATH -Value (Split-Path -Parent $after[0].FullName)
+          } else {
+            Write-Host "::warning::WiX установить не удалось — .msi будет пропущен"
+          }
+
+      # jpackage требует JDK 17+ с полным набором инструментов сборки пакетов.
+      - name: Package
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon ${{ matrix.task }}
+
+      # Причина сбоя jpackage пишется в файл и не попадает в stdout.
+      - name: Диагностика сбоя jpackage
+        if: failure() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Write-Host "=== содержимое desktop\build\compose ==="
+          Get-ChildItem desktop\build\compose -Recurse -File -ErrorAction SilentlyContinue |
+            Select-Object -First 40 -ExpandProperty FullName
+          Write-Host "=== логи jpackage ==="
+          $logs = Get-ChildItem desktop\build\compose\logs -Recurse -File -ErrorAction SilentlyContinue
+          if ($logs) {
+            foreach ($f in $logs) {
+              Write-Host "--- $($f.FullName) ---"
+              Get-Content $f.FullName -Tail 60
+            }
+          } else {
+            Write-Host "логи jpackage отсутствуют"
+          }
+
+      # Каталог выхода jpackage различается между версиями Compose, поэтому ищем
+      # артефакт по расширению, а не по жёсткому пути.
+      - name: Stage artifact
+        shell: bash
+        env:
+          EXT: ${{ matrix.ext }}
+          FMT: ${{ matrix.fmt }}
+        run: |
+          set -euo pipefail
+          mkdir -p staged
+          find_appdir() {
+            find desktop/build/compose/binaries/main -maxdepth 1 -type d -name 'KupuProxy*' | head -n1
+          }
+          if [ "${FMT:-}" = "zip" ]; then
+            appdir=$(find_appdir)
+            [ -n "$appdir" ] || { echo "::error::Каталог portable-сборки не найден"; exit 1; }
+            echo "найден каталог: $appdir"
+            zip -qr staged/portable-windows-x64.zip "$appdir"
+          elif [ "${FMT:-}" = "targz" ]; then
+            appdir=$(find_appdir)
+            [ -n "$appdir" ] || { echo "::error::Каталог portable-сборки не найден"; exit 1; }
+            echo "найден каталог: $appdir"
+            tar -czf staged/portable-linux-x64.tar.gz -C "$(dirname "$appdir")" "$(basename "$appdir")"
+          else
+            file=$(find desktop/build/compose/binaries -type f -name "*.$EXT" | head -n1)
+            if [ -z "$file" ]; then
+              echo "::error::Артефакт .$EXT не найден. Есть:"
+              find desktop/build/compose/binaries -type f | head -n40 || true
+              exit 1
+            fi
+            echo "найден артефакт: $file"
+            cp "$file" staged/
+          fi
+          ls -la staged
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: KupuProxy-desktop-${{ matrix.os }}-${{ strategy.job-index }}
+          path: staged/**
+          if-no-files-found: error

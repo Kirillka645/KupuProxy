@@ -1,11 +1,11 @@
 {
-  "version": "1.4.0.1",
-  "tag_name": "v1.4.0.1",
-  "apk_name": "KupuProxy-v1.4.0.1.apk",
-  "apk_url": "https://github.com/Kirillka645/KupuProxy/releases/download/v1.4.0.1/KupuProxy-v1.4.0.1.apk",
-  "apk_size": 15946261,
-  "sha256": "80ce81f1cceb7899a24d029518f56acd9c55b398be02ffb10d30f19f781c594b",
-  "sha256_url": "https://github.com/Kirillka645/KupuProxy/releases/download/v1.4.0.1/KupuProxy-v1.4.0.1.apk.sha256",
-  "release_url": "https://github.com/Kirillka645/KupuProxy/releases/tag/v1.4.0.1",
-  "changelog": "Ускорен сбор Telegram-источников и зеркал без потери частичных результатов. Добавлены отдельные 72-часовые снимки источников и восстановление локальных данных после прерванной записи. Исправлены локализация названий, языковой fallback и доступность элементов интерфейса. Усилена проверка тега, имени APK, SHA-256, версии и сертификата автообновления."
+    "version":  "1.4.0.2",
+    "tag_name":  "v1.4.0.2",
+    "apk_name":  "KupuProxy-v1.4.0.2.apk",
+    "apk_url":  "https://github.com/Kirillka645/KupuProxy/releases/download/v1.4.0.2/KupuProxy-v1.4.0.2.apk",
+    "apk_size":  15982437,
+    "sha256":  "4022b1445ee2623a5003589f88b780408dc8ddf6a6d4e9d2e353635257bf85dd",
+    "sha256_url":  "https://github.com/Kirillka645/KupuProxy/releases/download/v1.4.0.2/KupuProxy-v1.4.0.2.apk.sha256",
+    "release_url":  "https://github.com/Kirillka645/KupuProxy/releases/tag/v1.4.0.2",
+    "changelog":  "Первый релиз с десктоп-клиентом для Windows, Linux и macOS на Compose Multiplatform. Добавлена поддержка прокси SOCKS5, HTTP и WEB поверх MTProto, измерение jitter по нескольким замерам и цветовая индикация качества соединения. Проверка стала двухэтапной: сначала TCP-префлайт, затем полное рукопожатие протокола. Палитра унифицирована с иконкой приложения, добавлены анимации переходов, поиск и фильтр по протоколу. Исправлены две ошибки разбора: YAML-конфигурации не разбирались вообще, а логин и пароль из YAML-блока терялись."
 }

@@ -1,6 +1,6 @@
 package com.kupuproxy.app.data.source
 
-import com.kupuproxy.app.domain.model.SecretType
+import com.kupuproxy.shared.domain.model.SecretType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull

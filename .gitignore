@@ -5,6 +5,8 @@
 .DS_Store
 /build
 /app/build
+/shared/build
+/desktop/build
 /captures
 .externalNativeBuild
 .cxx
@@ -19,6 +21,6 @@ local.properties
 bin/
 gen/
 out/
-release/
+/release/
 *.log
 .kotlin

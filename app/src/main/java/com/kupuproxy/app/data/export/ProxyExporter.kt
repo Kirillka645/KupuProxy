@@ -4,8 +4,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.core.content.FileProvider
-import com.kupuproxy.app.domain.model.ProxyEndpoint
-import com.kupuproxy.app.domain.parser.ProxyParser
+import com.kupuproxy.shared.domain.model.ProxyEndpoint
+import com.kupuproxy.shared.domain.parser.ProxyParser
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File

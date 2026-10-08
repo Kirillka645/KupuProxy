@@ -1,0 +1,399 @@
+name: Publish release
+
+# Публикует релиз по тегу vX.Y.Z: Android APK + десктопные сборки для трёх платформ.
+#
+# Два ограничения определили устройство workflow:
+#
+# 1. Публичные сборки подписаны ключом разработчика (конфигурация "debug" в app/build.gradle.kts),
+#    а раннер GitHub генерирует собственный debug.keystore. APK, подписанный чужим ключом,
+#    не проходит UpdateArtifactPolicy.hasMatchingSigner, и автообновление ломается у всех,
+#    кто уже установил предыдущую версию. Поэтому ключ передаётся секретом
+#    KUPU_RELEASE_KEYSTORE и подключается через tools/release/ci-signing.gradle.
+#    Если секрет не задан, APK-сборка пропускается, а релиз публикуется без него.
+#
+# 2. Манифест автообновления нельзя заполнить заранее: сборка не воспроизводима побайтово.
+#    SHA-256 известен только после сборки, поэтому манифест пересобирается из готового APK,
+#    сверяется с ним и коммитится обратно в ветку по умолчанию.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Существующий тег для публикации, например v1.4.0.3"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Проверить тег
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      # Контекст secrets недоступен в условиях уровня job, поэтому наличие ключа
+      # подписи проверяем здесь, в шаге, и передаём результат через outputs.
+      has_keystore: ${{ steps.keys.outputs.present }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Тег должен совпадать с versionName
+        id: check
+        env:
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          declared=$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n1)
+          if [ "$declared" != "$version" ]; then
+            echo "::error::Тег $TAG не совпадает с versionName \"$declared\" в app/build.gradle.kts"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Проверить наличие ключа подписи
+        id: keys
+        env:
+          KEYSTORE_B64: ${{ secrets.KUPU_RELEASE_KEYSTORE }}
+        run: |
+          set -euo pipefail
+          if [ -n "${KEYSTORE_B64:-}" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+            echo "Ключ подписи задан — APK будет собрана в CI"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::KUPU_RELEASE_KEYSTORE не задан: APK собираться не будет, её нужно приложить к релизу вручную"
+          fi
+
+  apk:
+    name: Собрать Android APK
+    needs: verify
+    runs-on: ubuntu-latest
+    # Публичные сборки подписаны ключом разработчика. Без секрета шаг пропускается:
+    # APK придётся приложить к готовому релизу вручную.
+    if: ${{ needs.verify.outputs.has_keystore == 'true' }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Установить JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Восстановить ключ подписи
+        env:
+          KEYSTORE_B64: ${{ secrets.KUPU_RELEASE_KEYSTORE }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/keys"
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/keys/release.jks"
+          echo "KUPU_KEYSTORE_PATH=$RUNNER_TEMP/keys/release.jks" >> "$GITHUB_ENV"
+
+      - name: Собрать подписанный APK
+        env:
+          KUPU_KEYSTORE_PASSWORD: ${{ secrets.KUPU_KEYSTORE_PASSWORD }}
+          KUPU_KEY_ALIAS: ${{ secrets.KUPU_KEY_ALIAS }}
+          KUPU_KEY_PASSWORD: ${{ secrets.KUPU_KEY_PASSWORD }}
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew --no-daemon \
+            --init-script tools/release/ci-signing.gradle \
+            :app:assembleRelease
+          mkdir -p outputs
+          apk="outputs/KupuProxy-v${VERSION}.apk"
+          cp app/build/outputs/apk/release/app-release.apk "$apk"
+          echo "APK_PATH=$apk" >> "$GITHUB_ENV"
+
+      - name: Пересобрать манифест автообновления
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+          APK_PATH: ${{ env.APK_PATH }}
+        run: |
+          set -euo pipefail
+          notes="RELEASE_NOTES_${VERSION}.md"
+          [ -f "$notes" ] || { echo "::error::Нет файла $notes"; exit 1; }
+          changelog=$(sed -n '/^## 📦 Сборка/q;p' "$notes" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g' | cut -c1-900)
+          pwsh -File tools/release/update-manifest.ps1 \
+            -ApkPath "$APK_PATH" -Version "$VERSION" -Changelog "$changelog"
+
+      - name: Сверить манифест с собранным APK
+        run: |
+          set -euo pipefail
+          expected=$(python3 -c "import json;print(json.load(open('update_manifest.json'))['sha256'])")
+          actual=$(sha256sum "$APK_PATH" | cut -d' ' -f1)
+          if [ "$expected" != "$actual" ]; then
+            echo "::error::Манифест ($expected) не совпадает с APK ($actual)"
+            exit 1
+          fi
+          echo "Манифест совпадает с APK: $actual"
+
+      - name: Приложить ассеты релиза
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-apk
+          path: |
+            outputs/KupuProxy-v*.apk
+            outputs/KupuProxy-v*.apk.sha256
+            update_manifest.json
+          if-no-files-found: error
+
+  desktop:
+    name: Desktop ${{ matrix.name }}
+    needs: verify
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    # Флаг из matrix раньше нигде не применялся, и сбой .msi помечал весь запуск красным.
+    continue-on-error: ${{ matrix.continue-on-error == true }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: windows-msi
+            task: :desktop:packageMsi
+            ext: msi
+            # Установщик требует WiX, которого на образе может не быть. Отсутствие .msi
+            # не должно блокировать публикацию релиза с остальными файлами.
+            continue-on-error: true
+          - os: windows-latest
+            name: windows-portable
+            task: :desktop:createDistributable
+            fmt: zip
+          - os: ubuntu-latest
+            name: linux-deb
+            task: :desktop:packageDeb
+            ext: deb
+          # packageDistributionForCurrentOS на Linux собирает тот же .deb,
+          # поэтому .tar.gz получаем из portable-образа, как и Windows-архив.
+          - os: ubuntu-latest
+            name: linux-tar
+            task: :desktop:createDistributable
+            fmt: targz
+          - os: macos-latest
+            name: macos-dmg
+            task: :desktop:packageDmg
+            ext: dmg
+          # Запускаемый jar для Windows (нужна установленная Java 17+). Skia-библиотеки
+          # в uber-jar платформенные, поэтому собирается на Windows-раннере.
+          - os: windows-latest
+            name: windows-jar
+            task: :desktop:packageUberJarForCurrentOS
+            fmt: jar
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Установить JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      # jpackage собирает .msi только при наличии WiX Toolset 3.x — на образе его может не быть.
+      - name: Установить WiX для сборки .msi
+        if: endsWith(matrix.name, 'msi')
+        shell: pwsh
+        run: |
+          if (Get-Command light.exe -ErrorAction SilentlyContinue) {
+            Write-Host "WiX уже доступен"
+            exit 0
+          }
+          $wix = Get-ChildItem "${env:ProgramFiles(x86)}\WiX Toolset*\*\bin\light.exe" -ErrorAction SilentlyContinue
+          if ($wix) {
+            Add-Content -Path $env:GITHUB_PATH -Value (Split-Path -Parent $wix[0].FullName)
+            Write-Host "WiX найден в $(Split-Path -Parent $wix[0].FullName)"
+            exit 0
+          }
+          Write-Host "::group::Устанавливаем WiX Toolset"
+          choco install wixtoolset --yes --no-progress --limit-output
+          choco install wixtoolset --version=3.11.2 --yes --no-progress --limit-output
+          Write-Host "::endgroup::"
+          $after = Get-ChildItem "C:\Program Files (x86)\WiX Toolset*\bin\light.exe" -ErrorAction SilentlyContinue
+          if ($after) {
+            Add-Content -Path $env:GITHUB_PATH -Value (Split-Path -Parent $after[0].FullName)
+            Write-Host "WiX установлен"
+          } else {
+            Write-Host "::warning::WiX установить не удалось — .msi будет пропущен"
+          }
+
+      - name: Собрать
+        id: build
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew --no-daemon ${{ matrix.task }}
+
+      # jpackage пишет подробности сбоя в файл логов и не печатает их в stdout,
+      # поэтому причина падения в CI не видна. Дублируем и логи, и содержимое
+      # каталога сборки — по одному списку файлов причина тоже читается.
+      - name: Диагностика сбоя jpackage
+        if: failure() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Write-Host "=== содержимое desktop\build\compose ==="
+          Get-ChildItem desktop\build\compose -Recurse -File -ErrorAction SilentlyContinue |
+            Select-Object -First 40 -ExpandProperty FullName
+          Write-Host "=== логи jpackage ==="
+          $logs = Get-ChildItem desktop\build\compose\logs -Recurse -File -ErrorAction SilentlyContinue
+          if ($logs) {
+            foreach ($f in $logs) {
+              Write-Host "--- $($f.FullName) ---"
+              Get-Content $f.FullName -Tail 60
+            }
+          } else {
+            Write-Host "логи jpackage отсутствуют"
+          }
+          Write-Host "=== версия JDK и jpackage ==="
+          Write-Host (java -version 2>&1)
+          Write-Host ("jdk.jpackage: " + (& "$env:JAVA_HOME\bin\jpackage.exe" --version 2>&1))
+
+      - name: Собрать ассеты
+        shell: bash
+        env:
+          NAME: ${{ matrix.name }}
+          EXT: ${{ matrix.ext }}
+          FMT: ${{ matrix.fmt }}
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p staged
+
+          # Portable-образ: Compose создаёт каталог приложения, имя которого
+          # зависит от версии, поэтому ищем его, а не обращаемся по точному пути.
+          find_appdir() {
+            find desktop/build/compose/binaries/main -maxdepth 1 -type d -name 'KupuProxy*' | head -n1
+          }
+
+          if [ "${FMT:-}" = "jar" ]; then
+            jar=$(find desktop/build/compose/jars -type f -name '*.jar' | head -n1)
+            [ -n "$jar" ] || { echo "::error::Uber-jar не найден"; exit 1; }
+            cp "$jar" "staged/KupuProxy-Desktop-${VERSION}-windows-x64.jar"
+          elif [ "${FMT:-}" = "zip" ]; then
+            appdir=$(find_appdir)
+            [ -n "$appdir" ] || { echo "::error::Каталог portable-сборки не найден"; exit 1; }
+            echo "собираем windows-x64.zip из $appdir"
+            zip -qr "staged/KupuProxy-Desktop-${VERSION}-windows-x64.zip" "$appdir"
+          elif [ "${FMT:-}" = "targz" ]; then
+            appdir=$(find_appdir)
+            [ -n "$appdir" ] || { echo "::error::Каталог portable-сборки не найден"; exit 1; }
+            echo "собираем linux-x64.tar.gz из $appdir"
+            tar -czf "staged/KupuProxy-Desktop-${VERSION}-linux-x64.tar.gz" \
+              -C "$(dirname "$appdir")" "$(basename "$appdir")"
+          else
+            # Ищем строго по своему расширению. Общий поиск по нескольким
+            # расширениям приводил к тому, что задача .tar.gz копировала .deb.
+            file=$(find desktop/build/compose/binaries -type f -name "*.$EXT" | head -n1)
+            if [ -z "$file" ]; then
+              echo "::error::Артефакт .$EXT не найден. Есть:"
+              find desktop/build/compose/binaries -type f | head -n40 || true
+              exit 1
+            fi
+            echo "найден артефакт: $file"
+            cp "$file" staged/
+          fi
+          ls -la staged
+
+      - name: Загрузить артефакт
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-desktop-${{ matrix.name }}
+          path: staged/**
+          if-no-files-found: error
+
+  publish:
+    name: Опубликовать релиз
+    needs: [verify, desktop, apk]
+    runs-on: ubuntu-latest
+    # apk может быть пропущен (нет ключа подписи), отдельные платформы могут не собраться.
+    # Публикуем то, что собралось; полноту проверяет шаг «Проверить состав» — при слишком
+    # малом числе ассетов релиз не создаётся. Отмену пользователем не переигрываем.
+    if: ${{ !cancelled() && needs.verify.result == 'success' }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Скачать все ассеты
+        uses: actions/download-artifact@v7
+        with:
+          path: dist
+          pattern: release-*
+          merge-multiple: true
+
+      - name: Проверить состав
+        run: |
+          set -euo pipefail
+          find dist -type f -printf '%p (%s байт)\n'
+          count=$(find dist -type f | wc -l)
+          echo "всего файлов: $count"
+          # Минимум — APK-пара или хотя бы две десктопные сборки. Ниже этого релиз
+          # не создаём: пустой или обрезанный релиз хуже, чем явная ошибка.
+          if [ "$count" -lt 2 ]; then
+            echo "::error::Собрано слишком мало ассетов ($count) — публикация отменена"
+            exit 1
+          fi
+
+      - name: Создать релиз
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          notes="RELEASE_NOTES_${TAG#v}.md"
+          [ -f "$notes" ] || { echo "::error::Нет файла $notes"; exit 1; }
+
+          mapfile -d '' assets < <(find dist -type f -print0)
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Релиз $TAG уже существует — обновляем ассеты"
+            gh release upload "$TAG" "${assets[@]}" --clobber
+            gh release edit "$TAG" --title "$TAG" --notes-file "$notes"
+          else
+            gh release create "$TAG" --verify-tag \
+              --title "$TAG" --notes-file "$notes" "${assets[@]}"
+          fi
+
+      - name: Закоммитить пересобранный манифест
+        if: ${{ needs.apk.result == 'success' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- update_manifest.json; then
+            echo "Манифест не изменился — коммитить нечего"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          branch="${{ github.event.repository.default_branch }}"
+          # Чекаут сделан по тегу (detached HEAD), а в ветку по умолчанию за это время могли
+          # прийти коммиты (зеркало proxy-feeds — каждые 4 часа). Прямой push HEAD:main
+          # тогда отклоняется как non-fast-forward, поэтому коммитим поверх свежей ветки.
+          cp update_manifest.json "$RUNNER_TEMP/update_manifest.json"
+          git fetch --no-tags origin "$branch"
+          git checkout -B "$branch" "origin/$branch"
+          cp "$RUNNER_TEMP/update_manifest.json" update_manifest.json
+          if git diff --quiet -- update_manifest.json; then
+            echo "Манифест в $branch уже актуален"
+            exit 0
+          fi
+          git add update_manifest.json
+          git commit -m "chore(release): обновить манифест автообновления"
+          git push origin "HEAD:$branch"
+          echo "Манифест закоммичен в ${{ github.event.repository.default_branch }}"

@@ -62,17 +62,102 @@ KupuProxy — Android-приложение для поиска, проверки
 
 ## Сборка
 
-Требования: JDK 17 и Android SDK 35.
+Требования: **JDK 17** и Android SDK 35. Gradle 8.9 и AGP 8.7 не принимают JDK 21+ —
+сборка падает на разборе, поэтому версия JVM задаётся явно:
 
 ```bash
-./gradlew testDebugUnitTest lintDebug assembleDebug
+export JAVA_HOME=/path/to/jdk-17
 ```
 
-Основные каталоги:
+### Android (APK)
+
+```bash
+# Проверки + debug APK
+./gradlew testDebugUnitTest lintDebug assembleDebug
+
+# Release APK (нужен подписанный ключ в ~/.android/debug.keystore или в secrets CI)
+./gradlew assembleRelease
+
+# Готовый файл
+# app/build/outputs/apk/release/app-release.apk
+```
+
+### Desktop (Windows / Linux / macOS)
+
+Сборка идёт через Compose Multiplatform и `jpackage` из JDK 17.
+
+```bash
+# Запускаемый uber-jar для текущей ОС
+./gradlew :desktop:packageUberJarForCurrentOS
+# desktop/build/compose/jars/KupuProxy-<os>-<version>.jar
+java -jar desktop/build/compose/jars/KupuProxy-windows-x64-1.4.0.jar
+
+# Windows: установщик .msi
+./gradlew :desktop:packageMsi
+# desktop/build/compose/binaries/main/msi/KupuProxy-1.4.0.msi
+
+# Windows: portable-версия без установщика
+./gradlew :desktop:createDistributable
+# desktop/build/compose/binaries/main/app/KupuProxy/KupuProxy.exe
+
+# Linux: .deb
+./gradlew :desktop:packageDeb
+# desktop/build/compose/binaries/main/deb/kupuproxy_1.4.3-1_amd64.deb
+
+# Linux: portable .tar.gz (из portable-образа)
+./gradlew :desktop:createDistributable
+tar -czf KupuProxy-Desktop-linux-x64.tar.gz -C desktop/build/compose/binaries/main/app KupuProxy
+
+# macOS: .dmg
+./gradlew :desktop:packageDmg
+# desktop/build/compose/binaries/main/dmg/KupuProxy-1.4.3.dmg
+```
+
+> `jpackage` требует версию в формате `MAJOR.MINOR.BUILD`, поэтому «маркетинговая» версия
+> `1.4.0.3` упаковывается как `1.4.3` (последняя цифра становится BUILD, чтобы номер рос
+> от релиза к релизу). Полная версия показывается в заголовке окна и в трее.
+
+> Сборка `.msi` дополнительно требует **WiX Toolset 3.x** — он нужен `jpackage` на Windows.
+> Остальные форматы (`.deb`, `.dmg`, portable, `.tar.gz`) собираются без него.
+> Portable-сборка и на Windows, и на Linux — `createDistributable`
+> (`packageDistributionForCurrentOS` на Linux собирает тот же `.deb`).
+
+Запуск сразу на нужном разделе:
+
+```bash
+java -jar KupuProxy-Desktop-1.4.0.3.jar --tab=proxies
+java -jar KupuProxy-Desktop-1.4.0.3.jar --tray      # стартовать свёрнутым в трей
+```
+
+### Обновление манифеста автообновления
+
+Манифест содержит размер и SHA-256 **реально выпущенного** APK, поэтому заполняется после
+сборки, а не вручную:
+
+```bash
+./gradlew assembleRelease
+pwsh tools/release/update-manifest.ps1 \
+  -ApkPath app/build/outputs/apk/release/app-release.apk \
+  -Version 1.4.0.3 \
+  -Changelog "Краткое описание релиза."
+```
+
+### Основные каталоги
+
+```text
+app/         Android-приложение (Kotlin, Jetpack Compose, Material 3)
+shared/      общий код для Android и десктопа:
+             модель прокси, парсер, проверка MTProto/SOCKS5/HTTP/WEB, токены оформления
+desktop/     десктоп-клиент (Compose Multiplatform, трей, автозапуск, статистика)
+proxy-feeds/ зеркала публичных списков прокси
+tools/       служебные скрипты релиза
+```
+
+Внутри `app`:
 
 ```text
 core/       константы и общие утилиты
-domain/     модели, парсер, источники и агрегатор
+domain/     источники и агрегатор
 data/       сеть, Room, DataStore и экспорт
 ui/         Jetpack Compose и Material 3
 work/       фоновые проверки и обновления
@@ -80,7 +165,7 @@ work/       фоновые проверки и обновления
 
 ## English
 
-KupuProxy is an Android app for collecting and independently verifying Telegram MTProto proxies. Version 1.4.0.1 speeds up Telegram source collection, preserves partial and cached source results, prevents blank localized labels, makes local state writes crash-safe, and hardens signed in-app updates. It also includes scan depth presets, reliability history, source statistics, favorite monitoring, QR import/export, personal themes, and checks of up to 15,000 unique addresses.
+KupuProxy collects and independently verifies Telegram proxies. Version 1.4.0.3 gives the desktop client built-in proxy sources (the repository's `proxy-feeds/` mirrors with a CDN fallback and an offline snapshot) and fixes the local proxy tunnel, autostart and file picker. Version 1.4.0.2 added a desktop client for Windows, Linux and macOS built on Compose Multiplatform, sharing one Kotlin core with the Android app, and adds SOCKS5, HTTP and WEB proxy support alongside MTProto. Availability checks now run a fast TCP preflight per host before the full protocol handshake, measure jitter across several samples, and colour-code connection quality. The brand palette is unified across both clients.
 
 Download the APK from [GitHub Releases](https://github.com/Kirillka645/KupuProxy/releases/latest). No advertising SDKs, analytics, or trackers are included.
 

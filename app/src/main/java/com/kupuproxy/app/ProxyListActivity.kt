@@ -1,5 +1,19 @@
 package com.kupuproxy.app
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.OutlinedTextField
+import com.kupuproxy.app.ui.components.StatusDot
+import com.kupuproxy.app.ui.components.protocolLabel
+import com.kupuproxy.shared.design.KupuMotion
+import com.kupuproxy.shared.domain.check.LinkQuality
+import com.kupuproxy.shared.domain.model.ProxyProtocol
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
@@ -15,6 +29,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -58,8 +74,10 @@ class ProxyListActivity : AppCompatActivity() {
     private lateinit var promoPreferences: PromoPreferences
     private var sourceName by mutableStateOf("")
     private var proxies by mutableStateOf<List<ProxyWithPing>>(emptyList())
-    private var maxPing by mutableIntStateOf(Int.MAX_VALUE)
-    private var filterMenu by mutableStateOf(false)
+private var maxPing by mutableIntStateOf(Int.MAX_VALUE)
+private var filterMenu by mutableStateOf(false)
+private var searchQuery by mutableStateOf("")
+private var protocolFilter by mutableStateOf(ProxyProtocol.entries.toSet())
     private var showInvite by mutableStateOf(false)
     private var favoriteVersion by mutableIntStateOf(0)
 
@@ -88,8 +106,23 @@ class ProxyListActivity : AppCompatActivity() {
     @Composable
     private fun ProxyListScreen() {
         favoriteVersion
+        // Поиск по хосту/ссылке и фильтр по протоколу поверх существующего фильтра по задержке.
+        val search = searchQuery.trim()
         val filtered =
-            if (maxPing == Int.MAX_VALUE) proxies else proxies.filter { it.pingMs in 1..maxPing }
+            proxies
+                .asSequence()
+                .filter { maxPing == Int.MAX_VALUE || it.pingMs in 1..maxPing }
+                .filter { it.protocol in protocolFilter }
+                .filter { proxy ->
+                    if (search.isEmpty()) {
+                        true
+                    } else {
+                        proxy.url.contains(search, ignoreCase = true) ||
+                            proxy.protocol.name.contains(search, ignoreCase = true) ||
+                            proxyEndpointLabel(proxy.url).contains(search, ignoreCase = true)
+                    }
+                }
+                .toList()
         Scaffold(
             modifier = Modifier.kupuSafeScreen(),
             topBar = {
@@ -158,45 +191,127 @@ class ProxyListActivity : AppCompatActivity() {
                 }
             },
         ) { padding ->
-            if (filtered.isEmpty()) {
-                Column(
-                    Modifier.fillMaxSize().padding(padding),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally,
+            Column(Modifier.fillMaxSize().padding(padding)) {
+                AnimatedVisibility(
+                    visible = true,
+                    enter =
+                        fadeIn(tween(KupuMotion.standardMs)) +
+                            expandVertically(tween(KupuMotion.standardMs)),
                 ) {
-                    EmptyStateWithChannel(
-                        onOpenChannel = {
-                            TelegramIntents.openTelegramChannel(this@ProxyListActivity)
-                        }
-                    )
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize().padding(padding),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    items(filtered, key = ProxyWithPing::url) { proxy ->
-                        ProxyResultCard(
-                            proxy = proxy,
-                            favorite = ProxyCache.isFavorite(this@ProxyListActivity, proxy.url),
-                            onConnect = { connect(proxy.url) },
-                            onToggleFavorite = {
-                                ProxyCache.toggleFavorite(this@ProxyListActivity, proxy.url)
-                                favoriteVersion++
+                    Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            singleLine = true,
+                            placeholder = { Text(stringResource(R.string.list_search_hint)) },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.Search,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp),
+                                )
                             },
-                            onCopy = {
-                                copyToClipboard(proxy.url)
-                                Toast.makeText(
-                                        this@ProxyListActivity,
-                                        R.string.proxy_copied,
-                                        Toast.LENGTH_SHORT,
-                                    )
-                                    .show()
+                            trailingIcon = {
+                                if (searchQuery.isNotEmpty()) {
+                                    IconButton(onClick = { searchQuery = "" }) {
+                                        Icon(
+                                            Icons.Default.Close,
+                                            contentDescription =
+                                                stringResource(R.string.clear_search),
+                                            modifier = Modifier.size(18.dp),
+                                        )
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            ProxyProtocol.entries.forEach { protocol ->
+                                FilterChip(
+                                    selected = protocol in protocolFilter,
+                                    onClick = {
+                                        val next =
+                                            if (protocol in protocolFilter) {
+                                                protocolFilter - protocol
+                                            } else {
+                                                protocolFilter + protocol
+                                            }
+                                        // Хотя бы один протокол должен остаться включённым.
+                                        protocolFilter =
+                                            next.ifEmpty { ProxyProtocol.entries.toSet() }
+                                    },
+                                    label = { Text(protocolLabel(protocol)) },
+                                    leadingIcon = {
+                                        StatusDot(
+                                            quality =
+                                                LinkQuality.of(
+                                                    filtered
+                                                        .firstOrNull { it.protocol == protocol }
+                                                        ?.pingMs ?: -1,
+                                                ),
+                                            size = 8,
+                                        )
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (filtered.isEmpty()) {
+                    Column(
+                        Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        EmptyStateWithChannel(
+                            onOpenChannel = {
+                                TelegramIntents.openTelegramChannel(this@ProxyListActivity)
                             },
                         )
                     }
-                    item { Spacer(Modifier.height(80.dp)) }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        items(filtered, key = ProxyWithPing::url) { proxy ->
+                            // Появление результата скана анимируется: раньше строки вставлялись
+                            // в список мгновенно во время быстрой вставки.
+                            AnimatedVisibility(
+                                visible = true,
+                                enter =
+                                    fadeIn(tween(KupuMotion.standardMs)) +
+                                        expandVertically(tween(KupuMotion.standardMs)),
+                            ) {
+                                ProxyResultCard(
+                                    proxy = proxy,
+                                    favorite =
+                                        ProxyCache.isFavorite(this@ProxyListActivity, proxy.url),
+                                    onConnect = { connect(proxy.url) },
+                                    onToggleFavorite = {
+                                        ProxyCache.toggleFavorite(
+                                            this@ProxyListActivity,
+                                            proxy.url,
+                                        )
+                                        favoriteVersion++
+                                    },
+                                    onCopy = {
+                                        copyToClipboard(proxy.url)
+                                        Toast.makeText(
+                                                this@ProxyListActivity,
+                                                R.string.proxy_copied,
+                                                Toast.LENGTH_SHORT,
+                                            )
+                                            .show()
+                                    },
+                                )
+                            }
+                        }
+                        item { Spacer(Modifier.height(80.dp)) }
+                    }
                 }
             }
         }
@@ -210,6 +325,14 @@ class ProxyListActivity : AppCompatActivity() {
                 onDismiss = { showInvite = false },
             )
         }
+    }
+
+    /** Короткая метка host:port — по ней работает поиск по списку. */
+    private fun proxyEndpointLabel(url: String): String {
+        if (!url.contains("://")) return url
+        val authority = url.substringAfter("://").substringBefore('/').substringBefore('?')
+        val afterAt = authority.substringAfterLast('@')
+        return afterAt.ifBlank { authority }
     }
 
     private fun listSubtitle(list: List<ProxyWithPing>): String {
