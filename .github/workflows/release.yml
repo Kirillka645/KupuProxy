@@ -236,6 +236,13 @@ jobs:
       - name: Собрать
         id: build
         shell: bash
+        env:
+          # jpackage читает сгенерированный файл @args в кодировке платформы, а
+          # Compose-плагин пишет его в UTF-8. На Windows-раннере кодировка по
+          # умолчанию windows-1252, где байты кириллицы и тире из --description
+          # не определены: jpackage падает с «Input length = 1» ещё до сборки
+          # образа приложения. UTF-8 выравнивает обе стороны.
+          JAVA_TOOL_OPTIONS: ${{ runner.os == 'Windows' && '-Dfile.encoding=UTF-8' || '' }}
         run: |
           set -euo pipefail
           chmod +x ./gradlew
@@ -278,8 +285,10 @@ jobs:
 
           # Portable-образ: Compose создаёт каталог приложения, имя которого
           # зависит от версии, поэтому ищем его, а не обращаемся по точному пути.
+          # createDistributable пишет образ в binaries/main/app/<packageName>,
+          # то есть каталог лежит на втором уровне, а не на первом.
           find_appdir() {
-            find desktop/build/compose/binaries/main -maxdepth 1 -type d -name 'KupuProxy*' | head -n1
+            find desktop/build/compose/binaries/main -maxdepth 2 -type d -name 'KupuProxy*' | head -n1
           }
 
           if [ "${FMT:-}" = "jar" ]; then
