@@ -299,7 +299,38 @@ jobs:
             appdir=$(find_appdir)
             [ -n "$appdir" ] || { echo "::error::Каталог portable-сборки не найден"; exit 1; }
             echo "собираем windows-x64.zip из $appdir"
-            zip -qr "staged/KupuProxy-Desktop-${VERSION}-windows-x64.zip" "$appdir"
+            out="KupuProxy-Desktop-${VERSION}-windows-x64.zip"
+            # Архив собирается из родительского каталога, чтобы внутри не было
+            # пути desktop/build/compose/binaries/main/app, и по абсолютному пути,
+            # чтобы смена каталога не влияла на расположение самого архива.
+            parent=$(dirname "$appdir")
+            base=$(basename "$appdir")
+            root=$(pwd)
+            if command -v cygpath >/dev/null 2>&1; then
+              root=$(cygpath -w "$root")
+            fi
+
+            if command -v zip >/dev/null 2>&1; then
+              zip -qr "staged/$out" "$appdir"
+            else
+              # В Git Bash на windows-раннере нет zip. Берём то, что там есть:
+              # 7-Zip из образа, а если его нет — системный bsdtar (libarchive),
+              # который пишет zip по расширению файла.
+              if command -v 7z >/dev/null 2>&1; then
+                seven_zip=7z
+              elif [ -x "/c/Program Files/7-Zip/7z.exe" ]; then
+                seven_zip="/c/Program Files/7-Zip/7z.exe"
+              else
+                seven_zip=""
+              fi
+              if [ -n "$seven_zip" ]; then
+                ( cd "$parent" && "$seven_zip" a -tzip -mx=5 "$root/staged/$out" "$base" >/dev/null )
+              else
+                bsdtar="/c/Windows/System32/tar.exe"
+                [ -x "$bsdtar" ] || { echo "::error::Не найден архиватор zip/7z/bsdtar"; exit 1; }
+                "$bsdtar" -a -c -f "$root/staged/$out" -C "$(cygpath -w "$parent")" "$base"
+              fi
+            fi
           elif [ "${FMT:-}" = "targz" ]; then
             appdir=$(find_appdir)
             [ -n "$appdir" ] || { echo "::error::Каталог portable-сборки не найден"; exit 1; }
