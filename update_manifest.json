@@ -1,11 +1,11 @@
 {
-    "version":  "1.4.0.3",
-    "tag_name":  "v1.4.0.3",
-    "apk_name":  "KupuProxy-v1.4.0.3.apk",
-    "apk_url":  "https://github.com/Kirillka645/KupuProxy/releases/download/v1.4.0.3/KupuProxy-v1.4.0.3.apk",
-    "apk_size":  15982429,
-    "sha256":  "aeefb506b9e986585e821e6a5f61c0ed4fc8bb503dd76b8a31ae8460d21a827b",
-    "sha256_url":  "https://github.com/Kirillka645/KupuProxy/releases/download/v1.4.0.3/KupuProxy-v1.4.0.3.apk.sha256",
-    "release_url":  "https://github.com/Kirillka645/KupuProxy/releases/tag/v1.4.0.3",
-    "changelog":  "# KupuProxy v1.4.0.3 Десктоп-клиент получил встроенные источники прокси и серию исправлений, без которых часть функций 1.4.0.2 не работала: локальный прокси, выбор файла, автозапуск и системная тема. ## 📦 Встроенные источники (proxy-feeds) Раньше десктоп после установки был пустым: кнопка «Запустить скан» лишь открывала раздел «Источники», где нужно было искать файл или URL. Теперь в клиент встроены зеркала из каталога `proxy-feeds/` репозитория — те же, что GitHub Action обновляет каждые 4 часа: | Источник | Протокол | По умолчанию | |--------------------------|----------|--------------| | MTProto · сводный список | MTProto | включён | | SOCKS5 · Kort | SOCKS5 | включён | | SOCKS5 · hookzof | SOCKS5 | выключен — большой список, берётся случайная выборка из 1500 | - «Запустить скан» на «Обзоре» и «Быстрый скан» в трее сразу проверяют включённые источники; - порядок загрузки: **GitHub → j"
+    "version":  "1.4.0.4",
+    "tag_name":  "v1.4.0.4",
+    "apk_name":  "KupuProxy-v1.4.0.4.apk",
+    "apk_url":  "https://github.com/Kirillka645/KupuProxy/releases/download/v1.4.0.4/KupuProxy-v1.4.0.4.apk",
+    "apk_size":  15982433,
+    "sha256":  "f55a9c0cc4d8cdf8de375111874dbdc3d92bd790ccc3fa3a6e922ed486ac2818",
+    "sha256_url":  "https://github.com/Kirillka645/KupuProxy/releases/download/v1.4.0.4/KupuProxy-v1.4.0.4.apk.sha256",
+    "release_url":  "https://github.com/Kirillka645/KupuProxy/releases/tag/v1.4.0.4",
+    "changelog":  "# KupuProxy v1.4.0.4 Десктоп-клиент получил новый интерфейс в стиле Windows 11 (Fluent 2), прокси наконец открываются прямо в Telegram, а не в браузере, и скан стал заметно быстрее — на ПК и на Android. ## ✈️ «Открыть в Telegram» — без браузера Раньше при нажатии на прокси открывался браузер со страницей t.me: если схема `tg://` не была зарегистрирована (portable-версия Telegram), клиент «падал» на t.me, а SOCKS5 вообще передавался ссылкой `socks5://`, которую Telegram не понимает. - Telegram Desktop ищется напрямую: обработчик `tg://` в реестре, уже запущенный процесс (Telegram, AyuGram, Kotatogram, 64Gram), типовые пути установки; на macOS — `Telegram.app`, на Linux — `telegram-desktop`, Flatpak, Snap и `~/.local/share/TelegramDesktop`. - Прокси передаётся в Telegram так же, как это делает сам Telegram: `Telegram.exe -- tg://proxy?…`. - SOCKS5 открывается ссылкой `tg://socks?server=…\u0026p"
 }
