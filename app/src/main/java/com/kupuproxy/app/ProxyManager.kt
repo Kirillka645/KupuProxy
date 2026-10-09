@@ -332,6 +332,7 @@ object ProxyManager {
 
             val total = proxies.size
             val concurrency = settings.batchSize.coerceIn(16, 96).coerceAtMost(total)
+            val preflightConcurrency = (concurrency * 2).coerceIn(32, 160).coerceAtMost(total)
             val connectMs = settings.connectTimeoutMs.coerceIn(700, 1800)
             val responseMs = (settings.connectTimeoutMs + 600).coerceIn(1100, 2400)
             val stopAt = settings.stopWhenFound
@@ -368,8 +369,9 @@ object ProxyManager {
             val reachable = java.util.Collections.synchronizedList(mutableListOf<MutableList<String>>())
 
             coroutineScope {
-                // Фаза 1 — быстрый TCP-префлайт по уникальным host:port.
-                List(concurrency.coerceAtMost(groupList.size)) {
+                // Фаза 1 — быстрый TCP-префлайт по уникальным host:port. TCP-connect дешёвый,
+                // поэтому потоков вдвое больше, чем на рукопожатие.
+                List(preflightConcurrency.coerceAtMost(groupList.size)) {
                     async {
                         while (currentCoroutineContext().isActive && !stopped.get()) {
                             val index = groupCursor.getAndIncrement()
@@ -415,7 +417,7 @@ object ProxyManager {
                             val url = liveUrls[index]
 
                             val result = try {
-                                ProxyProbe.probeUrl(url, connectMs, responseMs, jitterSamples)
+                                ProxyProbe.probeUrl(url, connectMs, responseMs, jitterSamples, skipPreflight = true)
                             } catch (cancelled: CancellationException) {
                                 throw cancelled
                             } catch (_: Exception) {

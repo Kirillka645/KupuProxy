@@ -7,6 +7,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.window.Notification
 import androidx.compose.ui.window.Tray
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPosition
@@ -16,7 +23,7 @@ import androidx.compose.ui.window.rememberWindowState
 import kotlinx.coroutines.delay
 
 /** Версия десктоп-клиента. Держим в одном месте — она же показывается в трее и в окне. */
-const val DESKTOP_VERSION = "1.4.0.3"
+const val DESKTOP_VERSION = "1.4.0.4"
 
 /** Мост к системному автозапуску: вынесен, чтобы UI не зависел от платформенного кода. */
 object AutoStartBridge {
@@ -70,6 +77,17 @@ fun main(args: Array<String>) {
                         onClick = { state.scanStock() },
                     )
                     Item(
+                        text = state.rows.firstOrNull()?.let { "Открыть лучший прокси в Telegram (${it.latencyMs} ms)" }
+                            ?: "Открыть лучший прокси в Telegram",
+                        enabled = state.rows.isNotEmpty(),
+                        onClick = { state.rows.firstOrNull()?.let { state.openInTelegram(it.url) } },
+                    )
+                    Item(
+                        text = "Скопировать лучший прокси",
+                        enabled = state.rows.isNotEmpty(),
+                        onClick = { state.rows.firstOrNull()?.let { state.copyProxy(it.url) } },
+                    )
+                    Item(
                         text = if (state.localProxyRunning) {
                             "Остановить локальный прокси (127.0.0.1:${state.localProxy.localPort})"
                         } else {
@@ -99,11 +117,32 @@ fun main(args: Array<String>) {
                 title = "KupuProxy $DESKTOP_VERSION",
                 icon = icon,
                 state = windowState,
+                onPreviewKeyEvent = { event -> event.type == KeyEventType.KeyDown && handleGlobalShortcut(state, event) },
+                onKeyEvent = { event -> event.type == KeyEventType.KeyDown && handleListShortcut(state, event) },
             ) {
-                KupuDesktopTheme(darkTheme = state.isDarkTheme()) {
-                    com.kupuproxy.desktop.ui.DesktopRoot(state, onOpenTelegram = ::openProxyInTelegram)
+                window.minimumSize = java.awt.Dimension(1040, 640)
+                KupuDesktopTheme(darkTheme = state.isDarkTheme(), accent = state.settings.accent) {
+                    com.kupuproxy.desktop.ui.DesktopRoot(state)
                 }
             }
+        }
+
+        // Уведомление в трее о завершении скана, если окно свёрнуто.
+        LaunchedEffect(state.scanFinishedCount) {
+            if (state.scanFinishedCount > 0 && traySupported && !showWindow.value && state.settings.notifyOnScanEnd) {
+                val best = state.rows.firstOrNull()
+                trayState.sendNotification(
+                    Notification(
+                        "KupuProxy: скан завершён",
+                        if (best == null) "Рабочих прокси не найдено" else "Найдено ${state.rows.size}. Лучший: ${best.label} · ${best.latencyMs} ms",
+                        Notification.Type.Info,
+                    ),
+                )
+            }
+        }
+
+        LaunchedEffect(Unit) {
+            if (state.settings.scanOnStart) state.scanStock()
         }
 
         // Счётчик трафика идёт и при свёрнутом окне — иначе статистика замирает.
@@ -116,44 +155,105 @@ fun main(args: Array<String>) {
     }
 }
 
-/**
- * Открывает выбранный прокси в Telegram. Для SOCKS5/HTTP/WEB прямая ссылка Telegram
- * неприменима — показываем канал проекта и подсказку про локальный прокси.
- */
-private fun openProxyInTelegram(url: String) {
-    val entry = com.kupuproxy.shared.domain.parser.ProxyParser.fromUrl(url)
-    val targets = when {
-        entry == null -> listOf(url)
-        entry.protocol == com.kupuproxy.shared.domain.model.ProxyProtocol.MTPROTO -> listOf(
-            com.kupuproxy.shared.domain.parser.ProxyParser.toTgUrl(entry.host, entry.port, entry.secret),
-            // Если tg:// не зарегистрирован (Telegram не установлен), откроется t.me в браузере.
-            com.kupuproxy.shared.domain.parser.ProxyParser.toTmeUrl(entry.host, entry.port, entry.secret),
-        )
-        entry.protocol == com.kupuproxy.shared.domain.model.ProxyProtocol.SOCKS5 -> listOf(
-            com.kupuproxy.shared.domain.parser.ProxyParser.toSocksUrl(entry.host, entry.port, entry.username, entry.password),
-        )
-        else -> listOf("https://t.me/KupuProxy")
-    }
-    for (target in targets) {
-        if (openUri(target)) return
+/** Сочетания, работающие из любого места окна (даже из поля поиска). */
+private fun handleGlobalShortcut(state: AppState, event: androidx.compose.ui.input.key.KeyEvent): Boolean {
+    val ctrl = event.isCtrlPressed || event.isMetaPressed
+    return when {
+        (ctrl && event.key == Key.R) || event.key == Key.F5 -> {
+            if (!state.busy) state.scanStock()
+            true
+        }
+        ctrl && event.key == Key.F -> {
+            state.requestSearchFocus()
+            true
+        }
+        ctrl && event.key in TAB_KEYS -> {
+            state.tab = DesktopTab.entries[TAB_KEYS.indexOf(event.key)]
+            true
+        }
+        event.key == Key.Escape && state.busy -> {
+            state.cancelScan()
+            true
+        }
+        else -> false
     }
 }
 
-/** Открывает URI системным обработчиком. Desktop API есть не везде — на Linux пробуем xdg-open. */
-private fun openUri(target: String): Boolean {
-    val viaDesktop = runCatching {
-        val desktop = java.awt.Desktop.getDesktop()
-        if (!desktop.isSupported(java.awt.Desktop.Action.BROWSE)) error("browse unsupported")
-        desktop.browse(java.net.URI(target))
-    }.isSuccess
-    if (viaDesktop) return true
-    val os = System.getProperty("os.name").orEmpty().lowercase()
-    val command = when {
-        os.contains("win") -> listOf("rundll32", "url.dll,FileProtocolHandler", target)
-        os.contains("mac") -> listOf("open", target)
-        else -> listOf("xdg-open", target)
+private val TAB_KEYS = listOf(Key.One, Key.Two, Key.Three, Key.Four)
+
+/** Сочетания для списка — срабатывают, только если их не обработало поле ввода. */
+private fun handleListShortcut(state: AppState, event: androidx.compose.ui.input.key.KeyEvent): Boolean {
+    if (state.tab != DesktopTab.PROXIES && state.tab != DesktopTab.DASHBOARD) return false
+    val ctrl = event.isCtrlPressed || event.isMetaPressed
+    return when {
+        ctrl && event.key == Key.C && state.selectedUrl != null -> {
+            state.copyProxy()
+            true
+        }
+        (event.key == Key.Enter || event.key == Key.NumPadEnter) && state.selectedUrl != null -> {
+            state.openInTelegram()
+            true
+        }
+        event.key == Key.DirectionDown && state.tab == DesktopTab.PROXIES -> {
+            state.selectRelative(1)
+            true
+        }
+        event.key == Key.DirectionUp && state.tab == DesktopTab.PROXIES -> {
+            state.selectRelative(-1)
+            true
+        }
+        else -> false
     }
-    return runCatching { ProcessBuilder(command).start(); true }.getOrDefault(false)
+}
+
+/** Системные действия: ссылка в браузере (только для GitHub/релизов) и папка в проводнике. */
+object SystemActions {
+    fun browse(target: String): Boolean {
+        val viaDesktop = runCatching {
+            val desktop = java.awt.Desktop.getDesktop()
+            if (!desktop.isSupported(java.awt.Desktop.Action.BROWSE)) error("browse unsupported")
+            desktop.browse(java.net.URI(target))
+        }.isSuccess
+        if (viaDesktop) return true
+        val os = System.getProperty("os.name").orEmpty().lowercase()
+        val command = when {
+            os.contains("win") -> listOf("rundll32", "url.dll,FileProtocolHandler", target)
+            os.contains("mac") -> listOf("open", target)
+            else -> listOf("xdg-open", target)
+        }
+        return runCatching { ProcessBuilder(command).start(); true }.getOrDefault(false)
+    }
+
+    fun openFolder(dir: java.io.File): Boolean {
+        val viaDesktop = runCatching { java.awt.Desktop.getDesktop().open(dir) }.isSuccess
+        if (viaDesktop) return true
+        val os = System.getProperty("os.name").orEmpty().lowercase()
+        val command = when {
+            os.contains("win") -> listOf("explorer", dir.absolutePath)
+            os.contains("mac") -> listOf("open", dir.absolutePath)
+            else -> listOf("xdg-open", dir.absolutePath)
+        }
+        return runCatching { ProcessBuilder(command).start(); true }.getOrDefault(false)
+    }
+}
+
+/** Диалог сохранения списка прокси; `null` — отмена. */
+fun pickExportFile(): java.io.File? = launchOnSwing {
+    val dialog = java.awt.FileDialog(null as java.awt.Frame?, "Сохранить список прокси", java.awt.FileDialog.SAVE)
+    dialog.file = "kupuproxy-${java.time.LocalDate.now()}.txt"
+    dialog.isVisible = true
+    val dir = dialog.directory ?: return@launchOnSwing null
+    val name = dialog.file ?: return@launchOnSwing null
+    java.io.File(dir, if (name.contains('.')) name else "$name.txt")
+}
+
+/** Выбор исполняемого файла Telegram (portable-версия не регистрирует tg://). */
+fun pickTelegramExecutable(): java.io.File? = launchOnSwing {
+    val dialog = java.awt.FileDialog(null as java.awt.Frame?, "Укажите Telegram Desktop", java.awt.FileDialog.LOAD)
+    dialog.isVisible = true
+    val dir = dialog.directory ?: return@launchOnSwing null
+    val name = dialog.file ?: return@launchOnSwing null
+    java.io.File(dir, name).takeIf { it.exists() }
 }
 
 /** Открывает системный диалог выбора файла со списком прокси; `null` — пользователь отменил выбор. */

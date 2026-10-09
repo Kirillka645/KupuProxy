@@ -26,17 +26,21 @@ object ProxyProbe {
     /**
      * Проверяет одну запись. [samples] замеров подряд; jitter считается по успешным.
      * При `samples <= 1` дополнительных замеров не делается — это режим быстрого скана.
+     *
+     * [skipPreflight] — host:port уже проверен TCP-префлайтом (фаза 1 скана). Повторный
+     * префлайт тратил лишнее соединение и до 0,9 с на каждую запись.
      */
     fun probe(
         entry: RawProxyEntry,
         connectTimeoutMs: Int,
         responseTimeoutMs: Int,
         samples: Int = 1,
+        skipPreflight: Boolean = false,
     ): ProbeResult {
         val rounds = samples.coerceIn(1, 5)
 
         // Префлайт: один TCP-запрос на endpoint, а не на каждый секрет.
-        if (!MtprotoChecker.isTcpReachable(entry.host, entry.port, (connectTimeoutMs / 2).coerceIn(500, 900))) {
+        if (!skipPreflight && !MtprotoChecker.isTcpReachable(entry.host, entry.port, (connectTimeoutMs / 2).coerceIn(500, 900))) {
             return ProbeResult(
                 ok = false,
                 protocol = entry.protocol,
@@ -89,6 +93,7 @@ object ProxyProbe {
         connectTimeoutMs: Int,
         responseTimeoutMs: Int,
         samples: Int = 1,
+        skipPreflight: Boolean = false,
     ): ProbeResult {
         val entry = parse(url)
             ?: return ProbeResult(
@@ -97,7 +102,7 @@ object ProxyProbe {
                 latencyMs = -1,
                 error = "bad_url",
             )
-        return probe(entry, connectTimeoutMs, responseTimeoutMs, samples)
+        return probe(entry, connectTimeoutMs, responseTimeoutMs, samples, skipPreflight)
     }
 
     private fun probeOnce(

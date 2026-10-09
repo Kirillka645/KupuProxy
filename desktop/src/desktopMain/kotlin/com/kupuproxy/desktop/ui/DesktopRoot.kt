@@ -1,16 +1,34 @@
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
 package com.kupuproxy.desktop.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.ContextMenuArea
+import androidx.compose.foundation.ContextMenuItem
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.LocalScrollbarStyle
+import androidx.compose.foundation.ScrollbarStyle
+import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -21,336 +39,490 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.FolderOpen
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Public
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
+import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.outlined.Bolt
+import androidx.compose.material.icons.outlined.CloudDownload
+import androidx.compose.material.icons.outlined.ColorLens
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.ContentPaste
+import androidx.compose.material.icons.outlined.DarkMode
+import androidx.compose.material.icons.outlined.Dns
+import androidx.compose.material.icons.outlined.FileDownload
+import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Keyboard
+import androidx.compose.material.icons.outlined.Lan
+import androidx.compose.material.icons.outlined.Layers
+import androidx.compose.material.icons.outlined.Link
+import androidx.compose.material.icons.outlined.Menu
+import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.OfflineBolt
+import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.PowerSettingsNew
+import androidx.compose.material.icons.outlined.Public
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.StarOutline
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material.icons.outlined.Stop
+import androidx.compose.material.icons.outlined.SwapVert
+import androidx.compose.material.icons.outlined.Timer
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationRail
-import androidx.compose.material3.NavigationRailItem
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
-import kotlin.math.roundToInt
+import com.kupuproxy.desktop.AccentMode
+import com.kupuproxy.desktop.AppPaths
 import com.kupuproxy.desktop.AppState
-import com.kupuproxy.desktop.ThemeMode
+import com.kupuproxy.desktop.AutoStart
 import com.kupuproxy.desktop.AutoStartBridge
+import com.kupuproxy.desktop.CopyKind
+import com.kupuproxy.desktop.DESKTOP_VERSION
 import com.kupuproxy.desktop.DesktopTab
+import com.kupuproxy.desktop.Fluent
+import com.kupuproxy.desktop.Notice
+import com.kupuproxy.desktop.ProxyLinks
 import com.kupuproxy.desktop.ProxyRow
-import com.kupuproxy.desktop.StockFeeds
 import com.kupuproxy.desktop.ScanState
-import com.kupuproxy.desktop.TrafficStats
+import com.kupuproxy.desktop.Severity
+import com.kupuproxy.desktop.SortMode
+import com.kupuproxy.desktop.StockFeeds
+import com.kupuproxy.desktop.SystemActions
+import com.kupuproxy.desktop.TelegramLauncher
+import com.kupuproxy.desktop.ThemeMode
+import com.kupuproxy.desktop.UpdateChecker
+import com.kupuproxy.desktop.pickExportFile
 import com.kupuproxy.desktop.pickProxyFile
-import com.kupuproxy.shared.design.KupuMotion
-import com.kupuproxy.shared.design.KupuControl
-import com.kupuproxy.shared.design.KupuSpacing
+import com.kupuproxy.desktop.pickTelegramExecutable
 import com.kupuproxy.shared.domain.check.LinkQuality
 import com.kupuproxy.shared.domain.model.ProxyProtocol
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import kotlin.math.roundToInt
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
-/** Корень окна: навигация слева, контент справа — сетка для широких экранов. */
+private val PagePadding = PaddingValues(start = 36.dp, end = 36.dp, top = 28.dp, bottom = 24.dp)
+
+/**
+ * Корень окна в стиле Windows 11: панель навигации (NavigationView) на слое Mica слева и
+ * «слой контента» со скруглённым верхним левым углом справа.
+ */
 @Composable
-fun DesktopRoot(state: AppState, onOpenTelegram: (String) -> Unit) {
-    Row(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        NavigationRail(
-            containerColor = MaterialTheme.colorScheme.surface,
-            modifier = Modifier.fillMaxHeight().width(96.dp),
-        ) {
-            VSpace(KupuSpacing.lg)
-            Text(
-                "KupuProxy",
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(horizontal = KupuSpacing.sm, vertical = KupuSpacing.sm),
-            )
-            VSpace(KupuSpacing.md)
-            DesktopTab.entries.forEach { entry ->
-                NavigationRailItem(
-                    selected = state.tab == entry,
-                    onClick = { state.tab = entry },
-                    icon = {
-                        Icon(
-                            imageVector = when (entry) {
-                                DesktopTab.DASHBOARD -> Icons.Filled.Public
-                                DesktopTab.PROXIES -> Icons.Filled.PlayArrow
-                                DesktopTab.SOURCES -> Icons.Filled.FolderOpen
-                                DesktopTab.SETTINGS -> Icons.Filled.Settings
-                            },
-                            contentDescription = entry.title,
-                        )
-                    },
-                    label = { Text(entry.title, style = MaterialTheme.typography.labelSmall) },
-                )
-                VSpace(KupuSpacing.xs)
-            }
-        }
-
-        HorizontalDivider(Modifier.fillMaxHeight().width(1.dp))
-
-        Box(Modifier.fillMaxSize()) {
-            when (state.tab) {
-                DesktopTab.DASHBOARD -> DashboardScreen(state)
-                DesktopTab.PROXIES -> ProxiesScreen(state, onOpenTelegram)
-                DesktopTab.SOURCES -> SourcesScreen(state)
-                DesktopTab.SETTINGS -> SettingsScreen(state)
+fun DesktopRoot(state: AppState) {
+    val c = Fluent.colors
+    CompositionLocalProvider(
+        LocalScrollbarStyle provides ScrollbarStyle(
+            minimalHeight = 24.dp,
+            thickness = 6.dp,
+            shape = RoundedCornerShape(3.dp),
+            hoverDurationMillis = 200,
+            unhoverColor = c.textTertiary.copy(alpha = 0.35f),
+            hoverColor = c.textSecondary.copy(alpha = 0.6f),
+        ),
+    ) {
+        Row(Modifier.fillMaxSize().background(c.mica)) {
+            NavigationPane(state)
+            Box(
+                Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(topStart = 8.dp))
+                    .background(c.layer)
+                    .border(1.dp, c.layerStroke, RoundedCornerShape(topStart = 8.dp)),
+            ) {
+                when (state.tab) {
+                    DesktopTab.DASHBOARD -> HomePage(state)
+                    DesktopTab.PROXIES -> ProxiesPage(state)
+                    DesktopTab.SOURCES -> SourcesPage(state)
+                    DesktopTab.SETTINGS -> SettingsPage(state)
+                }
+                NoticeHost(state, Modifier.align(Alignment.BottomCenter).padding(bottom = 20.dp))
             }
         }
     }
 }
 
-// region Обзор
+// region Навигация
 
 @Composable
-private fun DashboardScreen(state: AppState) {
-    val rows = state.rows
-    val latencies = rows.map { it.latencyMs }
-    val scheme = MaterialTheme.colorScheme
+private fun NavigationPane(state: AppState) {
+    val c = Fluent.colors
+    val expanded = !state.settings.navCollapsed
+    val width by animateDpAsState(if (expanded) 264.dp else 52.dp, tween(200), label = "paneWidth")
+    Column(Modifier.width(width).fillMaxHeight().padding(vertical = 6.dp, horizontal = 4.dp)) {
+        Row(Modifier.height(40.dp), verticalAlignment = Alignment.CenterVertically) {
+            FluentIconButton(
+                Icons.Outlined.Menu,
+                if (expanded) "Свернуть панель" else "Развернуть панель",
+                onClick = { state.updateSettings { it.copy(navCollapsed = !it.navCollapsed) } },
+                size = 40.dp,
+            )
+            if (expanded) {
+                Spacer(Modifier.width(8.dp))
+                Image(painterResource("icon.png"), null, Modifier.size(18.dp))
+                Spacer(Modifier.width(10.dp))
+                FText("KupuProxy", Fluent.type.caption, c.textPrimary, maxLines = 1)
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        NavItem(state, DesktopTab.DASHBOARD, Icons.Outlined.Home, expanded)
+        NavItem(state, DesktopTab.PROXIES, Icons.Outlined.Dns, expanded, badge = state.rows.size.takeIf { it > 0 })
+        NavItem(state, DesktopTab.SOURCES, Icons.Outlined.CloudDownload, expanded)
+        Spacer(Modifier.weight(1f))
+        if (expanded) PaneStatus(state)
+        FluentDivider(Modifier.padding(vertical = 4.dp, horizontal = 4.dp))
+        NavItem(state, DesktopTab.SETTINGS, Icons.Outlined.Settings, expanded)
+    }
+}
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(KupuSpacing.xl),
-        verticalArrangement = Arrangement.spacedBy(KupuSpacing.lg),
-    ) {
+@Composable
+private fun NavItem(state: AppState, tab: DesktopTab, icon: ImageVector, expanded: Boolean, badge: Int? = null) {
+    val c = Fluent.colors
+    val selected = state.tab == tab
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    val pill by animateDpAsState(if (selected) 16.dp else 0.dp, tween(167), label = "navPill")
+    val item: @Composable () -> Unit = {
         Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            Modifier
+                .fillMaxWidth()
+                .height(38.dp)
+                .padding(vertical = 1.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(if (selected || hovered) c.subtleHover else Color.Transparent)
+                .hoverable(interaction)
+                .clickable(interaction, null) { state.tab = tab },
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column {
-                Text("KupuProxy", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                Text(
-                    state.statusMessage,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = scheme.onSurfaceVariant,
+            Box(Modifier.width(3.dp).height(pill).clip(CircleShape).background(c.accent))
+            Spacer(Modifier.width(13.dp))
+            Box {
+                Icon(icon, tab.title, tint = if (selected) c.accentText else c.textPrimary, modifier = Modifier.size(18.dp))
+                if (!expanded && badge != null) {
+                    Box(Modifier.align(Alignment.TopEnd).size(6.dp).background(c.accent, CircleShape))
+                }
+            }
+            if (expanded) {
+                Spacer(Modifier.width(16.dp))
+                FText(tab.title, Fluent.type.body, c.textPrimary, Modifier.weight(1f), maxLines = 1)
+                if (badge != null) {
+                    Box(
+                        Modifier.padding(end = 10.dp).clip(CircleShape).background(c.accent).padding(horizontal = 6.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        FText(if (badge > 999) "999+" else badge.toString(), Fluent.type.caption, c.onAccent)
+                    }
+                }
+            }
+        }
+    }
+    if (expanded) item() else FluentTooltip(tab.title) { item() }
+}
+
+/** Статус внизу панели: ход скана и локальный прокси. */
+@Composable
+private fun PaneStatus(state: AppState) {
+    val c = Fluent.colors
+    Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (state.busy) {
+            FText(state.scan.phase.ifBlank { "Сканирование…" }, Fluent.type.caption, c.textSecondary, maxLines = 1)
+            ProgressBar(state.scan.progressOrNull())
+        }
+        if (state.localProxyRunning) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(8.dp).background(c.success, CircleShape))
+                Spacer(Modifier.width(8.dp))
+                FText("Локальный прокси · 127.0.0.1:${state.localProxy.localPort}", Fluent.type.caption, c.textSecondary, maxLines = 1)
+            }
+        }
+    }
+}
+
+// endregion
+
+// region Уведомления
+
+@Composable
+private fun NoticeHost(state: AppState, modifier: Modifier) {
+    var last by remember { mutableStateOf<Notice?>(null) }
+    val notice = state.notice
+    if (notice != null) last = notice
+    LaunchedEffect(notice?.id) {
+        if (notice != null) {
+            delay(if (notice.action != null) 9_000 else 4_500)
+            state.dismissNotice(notice.id)
+        }
+    }
+    AnimatedVisibility(
+        visible = notice != null,
+        modifier = modifier,
+        enter = fadeIn(tween(167)) + slideInVertically(tween(250)) { it / 2 },
+        exit = fadeOut(tween(167)) + slideOutVertically(tween(167)) { it / 3 },
+    ) {
+        val shown = last ?: return@AnimatedVisibility
+        InfoBar(
+            severity = shown.severity,
+            title = shown.title,
+            message = shown.message,
+            actionLabel = shown.actionLabel,
+            onAction = shown.action?.let { action -> { action(); state.dismissNotice(shown.id) } },
+            onClose = { state.dismissNotice(shown.id) },
+            elevated = true,
+            modifier = Modifier.widthIn(min = 360.dp, max = 680.dp),
+        )
+    }
+}
+
+/** InfoBar'ы, которые показываются вверху страниц: ошибка, обновление, кэш. */
+@Composable
+private fun PageBanners(state: AppState, showCache: Boolean = false) {
+    state.errorMessage?.let { error ->
+        InfoBar(Severity.ERROR, "Ошибка", error, Modifier.fillMaxWidth(), onClose = { state.errorMessage = null })
+        Spacer(Modifier.height(12.dp))
+    }
+    state.update?.let { update ->
+        InfoBar(
+            Severity.INFO,
+            "Доступна версия ${update.version}",
+            "Сейчас установлена $DESKTOP_VERSION.",
+            Modifier.fillMaxWidth(),
+            actionLabel = "Скачать",
+            onAction = { SystemActions.browse(update.releaseUrl) },
+        )
+        Spacer(Modifier.height(12.dp))
+    }
+    if (showCache && state.restoredFromCache && !state.busy) {
+        InfoBar(
+            Severity.INFO,
+            "Список из прошлого сеанса",
+            "Проверено ${formatTime(state.lastScanAt)}. Прокси могли перестать работать — перепроверьте их.",
+            Modifier.fillMaxWidth(),
+            actionLabel = "Перепроверить",
+            onAction = { state.recheckFound() },
+        )
+        Spacer(Modifier.height(12.dp))
+    }
+}
+
+// endregion
+
+// region Главная
+
+@Composable
+private fun HomePage(state: AppState) {
+    val c = Fluent.colors
+    val rows = state.rows
+    val latencies = rows.map { it.latencyMs }
+    val scroll = rememberScrollState()
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(PagePadding)) {
+            PageHeader("Главная", state.statusMessage)
+            Spacer(Modifier.height(20.dp))
+            PageBanners(state, showCache = true)
+            HeroCard(state)
+            Spacer(Modifier.height(16.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                MetricTile(
+                    "Рабочих прокси",
+                    rows.size.toString(),
+                    Icons.Outlined.Dns,
+                    c.accent,
+                    if (state.scan.candidates > 0) "из ${state.scan.candidates} проверенных" else "запустите скан",
+                    Modifier.weight(1f),
+                )
+                MetricTile(
+                    "Лучшая задержка",
+                    latencies.minOrNull()?.let { "$it ms" } ?: "—",
+                    Icons.Outlined.Speed,
+                    qualityColor(LinkQuality.of(latencies.minOrNull() ?: -1)),
+                    if (latencies.isEmpty()) "нет данных" else "медиана ${median(latencies)} ms",
+                    Modifier.weight(1f),
+                )
+                MetricTile(
+                    "Протоколы",
+                    rows.map { it.protocol }.distinct().size.toString(),
+                    Icons.Outlined.Layers,
+                    protocolColor(ProxyProtocol.SOCKS5),
+                    rows.groupingBy { it.protocol }.eachCount().entries.joinToString(" · ") { "${protocolLabel(it.key)} ${it.value}" }.ifBlank { "—" },
+                    Modifier.weight(1f),
+                )
+                MetricTile(
+                    "Трафик",
+                    state.traffic.formatBytes(state.traffic.totalBytes),
+                    Icons.Outlined.SwapVert,
+                    protocolColor(ProxyProtocol.HTTP),
+                    if (state.localProxyRunning) "${state.traffic.connections} соединений" else "локальный прокси выключен",
+                    Modifier.weight(1f),
                 )
             }
-            ScanButton(state)
-        }
-
-        ScanProgress(state.scan)
-
-        // Метрики в три колонки — раскладка рассчитана на широкий экран.
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(KupuSpacing.md)) {
-            MetricTile(
-                label = "Рабочих прокси",
-                value = rows.size.toString(),
-                accent = scheme.primary,
-                caption = "из ${state.scan.candidates} кандидатов",
-                modifier = Modifier.weight(1f),
-            )
-            MetricTile(
-                label = "Медианная задержка",
-                value = if (latencies.isEmpty()) "—" else "${median(latencies)} ms",
-                accent = qualityColor(LinkQuality.of(median(latencies))),
-                caption = "минимум ${latencies.minOrNull() ?: 0} ms",
-                modifier = Modifier.weight(1f),
-            )
-            MetricTile(
-                label = "Трафик",
-                value = state.traffic.formatBytes(state.traffic.totalBytes),
-                accent = scheme.tertiary,
-                caption = "${state.traffic.connections} соединений",
-                modifier = Modifier.weight(1f),
-            )
-            MetricTile(
-                label = "Протоколы",
-                value = rows.groupingBy { it.protocol }.eachCount().size.toString(),
-                accent = scheme.secondary,
-                caption = state.settings.protocolFilter.joinToString(" ") { protocolLabel(it) }.ifBlank { "—" },
-                modifier = Modifier.weight(1f),
-            )
-        }
-
-        // Графики в две колонки.
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(KupuSpacing.md)) {
-            Card(
-                Modifier.weight(1.4f),
-                shape = MaterialTheme.shapes.medium,
-                colors = CardDefaults.cardColors(containerColor = scheme.surface),
-                border = androidx.compose.foundation.BorderStroke(1.dp, scheme.outlineVariant),
-            ) {
-                Column(Modifier.padding(KupuSpacing.cardPadding)) {
-                    Text("Трафик за сессию", style = MaterialTheme.typography.titleMedium)
-                    VSpace(KupuSpacing.sm)
-                    Text(
-                        "${state.traffic.formatBytes(state.traffic.upBytes)} вверх · " +
-                            "${state.traffic.formatBytes(state.traffic.downBytes)} вниз",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = scheme.onSurfaceVariant,
-                    )
-                    VSpace(KupuSpacing.lg)
-                    TrafficSparkline(
-                        history = state.traffic.history,
-                        modifier = Modifier.fillMaxWidth().height(120.dp),
-                    )
-                }
-            }
-
-            Card(
-                Modifier.weight(1f),
-                shape = MaterialTheme.shapes.medium,
-                colors = CardDefaults.cardColors(containerColor = scheme.surface),
-                border = androidx.compose.foundation.BorderStroke(1.dp, scheme.outlineVariant),
-            ) {
-                Column(Modifier.padding(KupuSpacing.cardPadding)) {
-                    Text("Распределение задержек", style = MaterialTheme.typography.titleMedium)
-                    VSpace(KupuSpacing.md)
-                    LatencyBars(values = latencies)
-                    VSpace(KupuSpacing.md)
-                    KeyValueRow("< 150 ms", latencies.count { it < 150 }.toString())
-                    KeyValueRow("150–400 ms", latencies.count { it in 150..399 }.toString())
-                    KeyValueRow("400–900 ms", latencies.count { it in 400..899 }.toString())
-                    KeyValueRow("> 900 ms", latencies.count { it >= 900 }.toString())
+            Spacer(Modifier.height(16.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                BestProxiesCard(state, Modifier.weight(1.5f))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    FluentCard(Modifier.fillMaxWidth()) {
+                        FText("Распределение задержек", Fluent.type.bodyStrong)
+                        Spacer(Modifier.height(14.dp))
+                        LatencyHistogram(latencies)
+                    }
+                    FluentCard(Modifier.fillMaxWidth()) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            FText("Трафик локального прокси", Fluent.type.bodyStrong, modifier = Modifier.weight(1f))
+                            FText(
+                                "↑ ${state.traffic.formatBytes(state.traffic.upBytes)}  ↓ ${state.traffic.formatBytes(state.traffic.downBytes)}",
+                                Fluent.type.caption,
+                                c.textSecondary,
+                            )
+                        }
+                        Spacer(Modifier.height(12.dp))
+                        TrafficSparkline(state.traffic.history, Modifier.fillMaxWidth().height(96.dp))
+                        Spacer(Modifier.height(4.dp))
+                        FText("байт/с за последние 2 минуты", Fluent.type.caption, c.textTertiary)
+                    }
                 }
             }
         }
-
-        Text("Топ-5 по задержке", style = MaterialTheme.typography.titleMedium)
-        if (rows.isEmpty()) {
-            EmptyState(
-                title = "Прокси ещё не проверены",
-                subtitle = "Нажмите «Запустить скан» — будут проверены встроенные источники. " +
-                    "Свои файлы и URL добавляются в разделе «Источники».",
-            )
-        } else {
-            rows.take(5).forEach { row -> TopRow(row) }
-        }
-
-        VSpace(KupuSpacing.xxl)
+        VerticalScrollbar(rememberScrollbarAdapter(scroll), Modifier.align(Alignment.CenterEnd).fillMaxHeight().padding(vertical = 4.dp, horizontal = 2.dp))
     }
 }
 
 @Composable
-private fun TopRow(row: ProxyRow) {
-    val scheme = MaterialTheme.colorScheme
-    Card(
-        shape = MaterialTheme.shapes.medium,
-        colors = CardDefaults.cardColors(containerColor = scheme.surface),
-        border = androidx.compose.foundation.BorderStroke(1.dp, scheme.outlineVariant),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
+private fun HeroCard(state: AppState) {
+    val c = Fluent.colors
+    val scan = state.scan
+    FluentCard(Modifier.fillMaxWidth(), padding = PaddingValues(24.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconPlate(if (state.busy) Icons.Outlined.Bolt else Icons.Outlined.Public, c.accent, size = 48.dp)
+            Spacer(Modifier.width(20.dp))
+            Column(Modifier.weight(1f)) {
+                FText(
+                    when {
+                        state.busy -> scan.phase.ifBlank { "Подготовка…" }
+                        state.rows.isEmpty() -> "Найдите рабочие прокси для Telegram"
+                        else -> "Найдено ${state.rows.size} рабочих прокси"
+                    },
+                    Fluent.type.subtitle,
+                )
+                FText(
+                    when {
+                        state.busy && scan.total > 0 -> "${scan.processed} из ${scan.total} · найдено ${state.rows.size}"
+                        state.busy -> "Загрузка списков…"
+                        state.rows.isEmpty() -> "Проверим встроенные источники MTProto и SOCKS5 и покажем самые быстрые."
+                        else -> "Последняя проверка: ${formatTime(state.lastScanAt)} · ${state.sourceLabel.takeIf { it != "—" } ?: "встроенные источники"}"
+                    },
+                    Fluent.type.body,
+                    c.textSecondary,
+                    maxLines = 2,
+                )
+            }
+            Spacer(Modifier.width(16.dp))
+            if (state.busy) {
+                FluentButton("Остановить", { state.cancelScan() }, icon = Icons.Outlined.Stop)
+            } else {
+                if (state.rows.isNotEmpty()) {
+                    FluentButton("Перепроверить", { state.recheckFound() }, icon = Icons.Outlined.Refresh)
+                    Spacer(Modifier.width(8.dp))
+                }
+                FluentTooltip("Ctrl+R") {
+                    FluentButton("Найти прокси", { state.scanStock() }, style = ButtonStyle.ACCENT, icon = Icons.Outlined.PlayArrow)
+                }
+            }
+        }
+        if (state.busy) {
+            Spacer(Modifier.height(18.dp))
+            ProgressBar(scan.progressOrNull())
+        }
+    }
+}
+
+@Composable
+private fun BestProxiesCard(state: AppState, modifier: Modifier) {
+    val c = Fluent.colors
+    FluentCard(modifier, padding = PaddingValues(vertical = 12.dp)) {
+        Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            FText("Лучшие прокси", Fluent.type.bodyStrong, modifier = Modifier.weight(1f))
+            FluentButton("Все прокси", { state.tab = DesktopTab.PROXIES }, style = ButtonStyle.SUBTLE)
+        }
+        Spacer(Modifier.height(4.dp))
+        if (state.rows.isEmpty()) {
+            EmptyState(
+                "Пока пусто",
+                if (state.busy) "Рабочие прокси появятся здесь сразу, как только будут найдены." else "Нажмите «Найти прокси» — проверка займёт меньше минуты.",
+                icon = Icons.Outlined.Dns,
+            )
+        } else {
+            state.rows.take(7).forEach { row ->
+                CompactProxyRow(state, row)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompactProxyRow(state: AppState, row: ProxyRow) {
+    val c = Fluent.colors
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    val links = remember(row.url) { ProxyLinks.of(row.url) }
+    ProxyContextMenu(state, row) {
         Row(
-            Modifier.padding(KupuSpacing.md),
+            Modifier
+                .fillMaxWidth()
+                .height(44.dp)
+                .padding(horizontal = 6.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(if (hovered) c.subtleHover else Color.Transparent)
+                .hoverable(interaction)
+                .clickable(interaction, null) {
+                    state.select(row.url)
+                    state.tab = DesktopTab.PROXIES
+                }
+                .padding(horizontal = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             StatusDot(row.quality)
-            HSpace(KupuSpacing.md)
-            Column(Modifier.weight(1f)) {
-                Text(row.label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                Text(
-                    protocolLabel(row.protocol) +
-                        if (row.samples > 1) " · ${row.samples} замеров · jitter ${row.jitterMs} ms" else "",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = scheme.onSurfaceVariant,
-                )
+            Spacer(Modifier.width(12.dp))
+            FText(row.label, Fluent.type.body, modifier = Modifier.weight(1f), maxLines = 1)
+            ProtocolBadge(row.protocol)
+            Spacer(Modifier.width(12.dp))
+            FText("${row.latencyMs} ms", Fluent.type.bodyStrong, qualityColor(row.quality), Modifier.width(72.dp))
+            if (links?.tg != null) {
+                FluentIconButton(Icons.AutoMirrored.Outlined.Send, "Открыть в Telegram", { state.openInTelegram(row.url) }, tint = c.accentText)
+            } else {
+                Spacer(Modifier.width(Fluent.controlHeight))
             }
-            Text(
-                "${row.latencyMs} ms",
-                style = MaterialTheme.typography.titleMedium,
-                color = qualityColor(row.quality),
-                fontWeight = FontWeight.Bold,
-            )
+            FluentIconButton(Icons.Outlined.ContentCopy, "Скопировать прокси", { state.copyProxy(row.url) })
         }
     }
-}
-
-@Composable
-private fun ScanButton(state: AppState) {
-    if (state.busy) {
-        OutlinedButton(onClick = { state.cancelScan() }, modifier = Modifier.height(KupuControl.buttonHeight)) {
-            Icon(Icons.Filled.Stop, contentDescription = null, modifier = Modifier.size(18.dp))
-            HSpace(KupuSpacing.sm)
-            Text("Стоп")
-        }
-    } else {
-        // Сразу сканирует встроенные источники из proxy-feeds — без поиска файлов и URL.
-        Button(
-            onClick = { state.scanStock() },
-            modifier = Modifier.height(KupuControl.buttonHeight).widthIn(min = 200.dp),
-        ) {
-            Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
-            HSpace(KupuSpacing.sm)
-            Text("Запустить скан", fontWeight = FontWeight.SemiBold)
-        }
-    }
-}
-
-@Composable
-fun ScanProgress(scan: ScanState) {
-    AnimatedVisibility(
-        visible = scan.running || scan.total > 0,
-        enter = fadeIn(tween(KupuMotion.standardMs)),
-        exit = fadeOut(tween(KupuMotion.standardMs)),
-    ) {
-        if (scan.total > 0) {
-            Card(
-                shape = MaterialTheme.shapes.medium,
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Column(Modifier.padding(KupuSpacing.cardPadding)) {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Text(
-                            if (scan.running) scan.phase else "Скан завершён",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Text(
-                            "${scan.processed} / ${scan.total}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    VSpace(KupuSpacing.sm)
-                    LinearProgressIndicator(
-                        progress = { if (scan.total > 0) (scan.processed.toFloat() / scan.total).coerceIn(0f, 1f) else 0f },
-                        modifier = Modifier.fillMaxWidth().height(6.dp),
-                    )
-                }
-            }
-        }
-    }
-}
-
-private fun median(values: List<Int>): Int {
-    if (values.isEmpty()) return 0
-    val sorted = values.sorted()
-    return sorted[sorted.size / 2]
 }
 
 // endregion
@@ -358,202 +530,409 @@ private fun median(values: List<Int>): Int {
 // region Прокси
 
 @Composable
-private fun ProxiesScreen(state: AppState, onOpenTelegram: (String) -> Unit) {
-    val scheme = MaterialTheme.colorScheme
+private fun ProxiesPage(state: AppState) {
+    val c = Fluent.colors
     val rows = state.filteredRows
-    val selected = state.selectedRow
+    val searchFocus = remember { FocusRequester() }
+    LaunchedEffect(state.searchFocusRequests) {
+        if (state.searchFocusRequests > 0) runCatching { searchFocus.requestFocus() }
+    }
+    Column(Modifier.fillMaxSize().padding(PagePadding)) {
+        PageHeader(
+            "Прокси",
+            if (state.rows.isEmpty()) "Список пуст — запустите скан" else "Показано ${rows.size} из ${state.rows.size}" +
+                if (state.lastScanAt > 0) " · проверено ${formatTime(state.lastScanAt)}" else "",
+        )
+        Spacer(Modifier.height(16.dp))
+        PageBanners(state)
 
-    Row(Modifier.fillMaxSize()) {
-        Column(Modifier.weight(1.6f).fillMaxHeight()) {
-            // Поиск и фильтр по задержке.
-            Column(Modifier.padding(KupuSpacing.lg)) {
-                OutlinedTextField(
-                    value = state.searchQuery,
-                    onValueChange = { state.searchQuery = it },
-                    label = { Text("Поиск по хосту или ссылке") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                VSpace(KupuSpacing.md)
-                Text(
-                    "Фильтр по задержке: до ${state.settings.maxLatencyFilterMs} ms",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = scheme.onSurfaceVariant,
-                )
-                Slider(
-                    value = state.settings.maxLatencyFilterMs.toFloat(),
-                    onValueChange = { value ->
-                        state.updateSettings { it.copy(maxLatencyFilterMs = (value / 50f).roundToInt() * 50) }
-                    },
-                    valueRange = 100f..8_000f,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                VSpace(KupuSpacing.xs)
-                Text(
-                    "${rows.size} из ${state.rows.size}",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = scheme.onSurfaceVariant,
-                )
-                VSpace(KupuSpacing.md)
-                ScanProgress(state.scan)
-            }
-
-            HorizontalDivider()
-
-            if (rows.isEmpty()) {
-                EmptyState(
-                    title = "Ничего не найдено",
-                    subtitle = "Измените фильтры или запустите новый скан.",
-                    modifier = Modifier.fillMaxSize(),
-                )
+        // CommandBar
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (state.busy) {
+                FluentButton("Остановить", { state.cancelScan() }, icon = Icons.Outlined.Stop)
             } else {
-                LazyColumn(
-                    Modifier.fillMaxSize(),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        horizontal = KupuSpacing.lg,
-                        vertical = KupuSpacing.sm,
-                    ),
-                ) {
-                    items(rows, key = { it.url }) { row ->
-                        ProxyTableRow(
-                            row = row,
-                            selected = row.url == selected?.url,
-                            favorite = row.url in state.favorites,
-                            onClick = { state.select(row.url) },
-                            onFavorite = { state.toggleFavorite(row.url) },
+                FluentTooltip("Проверить встроенные источники (Ctrl+R)") {
+                    FluentButton("Сканировать", { state.scanStock() }, style = ButtonStyle.ACCENT, icon = Icons.Outlined.PlayArrow)
+                }
+            }
+            FluentButton("Перепроверить", { state.recheckFound() }, style = ButtonStyle.SUBTLE, icon = Icons.Outlined.Refresh, enabled = !state.busy && state.rows.isNotEmpty())
+            FluentDivider(Modifier.height(20.dp).padding(horizontal = 4.dp), vertical = true)
+            FluentButton("Копировать все", { state.copyAll() }, style = ButtonStyle.SUBTLE, icon = Icons.Outlined.ContentCopy, enabled = rows.isNotEmpty())
+            FluentButton("Экспорт…", { pickExportFile()?.let(state::exportTo) }, style = ButtonStyle.SUBTLE, icon = Icons.Outlined.FileDownload, enabled = rows.isNotEmpty())
+            Spacer(Modifier.weight(1f))
+            ComboBox(SortMode.entries, state.settings.sortMode, { it.title }, { mode -> state.updateSettings { it.copy(sortMode = mode) } })
+            Spacer(Modifier.width(4.dp))
+            TextBox(
+                state.searchQuery,
+                { state.searchQuery = it },
+                "Поиск (Ctrl+F)",
+                Modifier.width(240.dp),
+                leadingIcon = Icons.Outlined.Search,
+                focusRequester = searchFocus,
+            )
+        }
+        Spacer(Modifier.height(12.dp))
+
+        // Фильтры
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            ProxyProtocol.entries.forEach { protocol ->
+                val count = state.rows.count { it.protocol == protocol }
+                ToggleChip(
+                    protocolLabel(protocol) + if (count > 0) " · $count" else "",
+                    protocol in state.settings.protocolFilter,
+                    { state.toggleProtocol(protocol) },
+                )
+            }
+            Spacer(Modifier.width(6.dp))
+            ToggleChip(
+                "Избранные · ${state.favorites.size}",
+                state.onlyFavorites,
+                { state.onlyFavorites = !state.onlyFavorites },
+                icon = Icons.Filled.Star,
+            )
+            Spacer(Modifier.weight(1f))
+            FText("Задержка до ${state.settings.maxLatencyFilterMs} ms", Fluent.type.caption, c.textSecondary)
+            FluentSlider(
+                state.settings.maxLatencyFilterMs.toFloat(),
+                { v -> state.updateSettings { it.copy(maxLatencyFilterMs = (v / 50f).roundToInt() * 50) } },
+                100f..8000f,
+                Modifier.width(200.dp),
+            )
+        }
+        if (state.busy || state.scan.running) {
+            Spacer(Modifier.height(10.dp))
+            ScanStrip(state.scan)
+        }
+        Spacer(Modifier.height(12.dp))
+
+        Row(Modifier.fillMaxWidth().weight(1f)) {
+            ProxyGrid(state, rows, Modifier.weight(1f).fillMaxHeight())
+            Spacer(Modifier.width(16.dp))
+            DetailsPane(state, Modifier.width(344.dp).fillMaxHeight())
+        }
+    }
+}
+
+@Composable
+private fun ScanStrip(scan: ScanState) {
+    val c = Fluent.colors
+    Column(Modifier.fillMaxWidth()) {
+        Row {
+            FText(scan.phase.ifBlank { "Загрузка списков…" }, Fluent.type.caption, c.textSecondary, Modifier.weight(1f))
+            if (scan.total > 0) FText("${scan.processed} / ${scan.total} · найдено ${scan.found}", Fluent.type.caption, c.textSecondary)
+        }
+        Spacer(Modifier.height(6.dp))
+        ProgressBar(scan.progressOrNull())
+    }
+}
+
+private object Cols {
+    val star = 36.dp
+    val protocol = 96.dp
+    val ping = 80.dp
+    val jitter = 72.dp
+    val source = 150.dp
+    val actions = 72.dp
+}
+
+@Composable
+private fun ProxyGrid(state: AppState, rows: List<ProxyRow>, modifier: Modifier) {
+    val c = Fluent.colors
+    val listState = rememberLazyListState()
+    // ↑/↓ меняют выбор — прокручиваем к выбранной строке, если она за краем.
+    LaunchedEffect(state.selectedUrl, rows.size) {
+        val index = rows.indexOfFirst { it.url == state.selectedUrl }
+        if (index >= 0) {
+            val visible = listState.layoutInfo.visibleItemsInfo
+            val first = visible.firstOrNull()?.index ?: 0
+            val last = visible.lastOrNull()?.index ?: 0
+            if (index < first || index >= last) listState.animateScrollToItem((index - 2).coerceAtLeast(0))
+        }
+    }
+    FluentCard(modifier, padding = PaddingValues(0.dp)) {
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val showSource = maxWidth > 720.dp
+            Column(Modifier.fillMaxSize()) {
+                Row(Modifier.fillMaxWidth().height(36.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Spacer(Modifier.width(Cols.star))
+                    HeaderCell("Адрес", Modifier.weight(1f).padding(start = 18.dp))
+                    HeaderCell("Протокол", Modifier.width(Cols.protocol), sort = SortMode.PROTOCOL, state = state)
+                    HeaderCell("Задержка", Modifier.width(Cols.ping), sort = SortMode.PING, state = state)
+                    HeaderCell("Jitter", Modifier.width(Cols.jitter), sort = SortMode.JITTER, state = state)
+                    if (showSource) HeaderCell("Источник", Modifier.width(Cols.source))
+                    Spacer(Modifier.width(Cols.actions))
+                }
+                FluentDivider()
+                if (rows.isEmpty()) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        EmptyState(
+                            if (state.rows.isEmpty()) "Прокси ещё не найдены" else "Ничего не подходит под фильтры",
+                            if (state.rows.isEmpty()) {
+                                if (state.busy) "Рабочие прокси появятся здесь по мере проверки." else "Запустите скан встроенных источников или добавьте свой список в «Источниках»."
+                            } else {
+                                "Измените поиск, протоколы или порог задержки."
+                            },
+                            icon = Icons.Outlined.Dns,
+                            action = if (state.rows.isEmpty() && !state.busy) {
+                                { FluentButton("Сканировать", { state.scanStock() }, style = ButtonStyle.ACCENT, icon = Icons.Outlined.PlayArrow) }
+                            } else {
+                                null
+                            },
+                        )
+                    }
+                } else {
+                    Box(Modifier.fillMaxSize()) {
+                        LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(vertical = 4.dp)) {
+                            items(rows, key = { it.url }) { row ->
+                                GridRow(state, row, showSource)
+                            }
+                        }
+                        VerticalScrollbar(
+                            rememberScrollbarAdapter(listState),
+                            Modifier.align(Alignment.CenterEnd).fillMaxHeight().padding(vertical = 4.dp, horizontal = 2.dp),
                         )
                     }
                 }
-            }
-        }
-
-        // Боковая панель с действиями.
-        Column(
-            Modifier
-                .width(320.dp)
-                .fillMaxHeight()
-                .background(scheme.surface)
-                .padding(KupuSpacing.lg),
-            verticalArrangement = Arrangement.spacedBy(KupuSpacing.md),
-        ) {
-            Text("Действия", style = MaterialTheme.typography.titleMedium)
-            if (selected == null) {
-                Text(
-                    "Выберите прокси в списке.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = scheme.onSurfaceVariant,
-                )
-            } else {
-                KeyValueRow("Адрес", selected.label)
-                KeyValueRow("Протокол", protocolLabel(selected.protocol))
-                KeyValueRow("Задержка", "${selected.latencyMs} ms")
-                if (selected.samples > 1) {
-                    KeyValueRow("Jitter", "${selected.jitterMs} ms")
-                    KeyValueRow("Замеров", selected.samples.toString())
-                }
-                KeyValueRow("Качество", qualityLabel(selected.quality))
-
-                VSpace(KupuSpacing.xs)
-                Button(
-                    onClick = { onOpenTelegram(selected.url) },
-                    modifier = Modifier.fillMaxWidth().height(KupuControl.buttonHeight),
-                ) {
-                    Text("Открыть в Telegram", fontWeight = FontWeight.SemiBold)
-                }
-
-                val tunnelling = selected.protocol != ProxyProtocol.MTPROTO
-                Button(
-                    onClick = { state.toggleLocalProxy() },
-                    enabled = tunnelling || state.localProxyRunning,
-                    modifier = Modifier.fillMaxWidth().height(KupuControl.buttonHeight),
-                ) {
-                    Text(
-                        if (state.localProxyRunning) "Остановить прокси" else "Включить локальный прокси",
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
-                if (!tunnelling) {
-                    Text(
-                        "MTProto не поддерживает туннелирование — используйте режим «Открыть в Telegram».",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = scheme.onSurfaceVariant,
-                    )
-                }
-            }
-
-            VSpace(KupuSpacing.md)
-            HorizontalDivider()
-            VSpace(KupuSpacing.sm)
-
-            if (state.localProxyRunning) {
-                Text("Локальный прокси", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                KeyValueRow("Адрес", "127.0.0.1:${state.localProxy.localPort}")
-                state.localProxy.currentTarget?.let { KeyValueRow("Через", "${it.host}:${it.port}") }
-                Text(
-                    "Укажите 127.0.0.1:${state.localProxy.localPort} как HTTP-прокси в браузере или системе.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = scheme.onSurfaceVariant,
-                )
-                KeyValueRow("Отправлено", state.traffic.formatBytes(state.traffic.upBytes))
-                KeyValueRow("Получено", state.traffic.formatBytes(state.traffic.downBytes))
-                KeyValueRow("Соединений", state.traffic.connections.toString())
             }
         }
     }
 }
 
 @Composable
-private fun ProxyTableRow(
-    row: ProxyRow,
-    selected: Boolean,
-    favorite: Boolean,
-    onClick: () -> Unit,
-    onFavorite: () -> Unit,
-) {
-    val scheme = MaterialTheme.colorScheme
+private fun HeaderCell(text: String, modifier: Modifier, sort: SortMode? = null, state: AppState? = null) {
+    val c = Fluent.colors
+    val active = sort != null && state?.settings?.sortMode == sort
     Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(vertical = 2.dp)
-            .background(
-                if (selected) scheme.primaryContainer.copy(alpha = 0.45f) else scheme.surface,
-                MaterialTheme.shapes.small,
-            )
-            .border(
-                1.dp,
-                if (selected) scheme.primary else scheme.outlineVariant,
-                MaterialTheme.shapes.small,
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = KupuSpacing.md, vertical = KupuSpacing.sm),
+        modifier.then(
+            if (sort != null && state != null) Modifier.clickable { state.updateSettings { it.copy(sortMode = sort) } } else Modifier,
+        ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        StatusDot(row.quality, size = 12.dp)
-        HSpace(KupuSpacing.md)
-        Column(Modifier.weight(1f)) {
-            Text(row.label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-            Text(
-                protocolLabel(row.protocol) +
-                    if (row.samples > 1) " · jitter ${row.jitterMs} ms" else "",
-                style = MaterialTheme.typography.bodySmall,
-                color = scheme.onSurfaceVariant,
-            )
+        FText(text, Fluent.type.caption, if (active) c.textPrimary else c.textSecondary, maxLines = 1)
+        if (active) FText(" ↑", Fluent.type.caption, c.accentText)
+    }
+}
+
+@Composable
+private fun GridRow(state: AppState, row: ProxyRow, showSource: Boolean) {
+    val c = Fluent.colors
+    val selected = row.url == state.selectedUrl
+    val favorite = row.url in state.favorites
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    val links = remember(row.url) { ProxyLinks.of(row.url) }
+    var lastClick by remember { mutableStateOf(0L) }
+    ProxyContextMenu(state, row) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .height(40.dp)
+                .padding(horizontal = 4.dp, vertical = 1.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(
+                    when {
+                        selected -> c.accent.copy(alpha = if (c.isDark) 0.16f else 0.10f)
+                        hovered -> c.subtleHover
+                        else -> Color.Transparent
+                    },
+                )
+                .hoverable(interaction)
+                .clickable(interaction, null) {
+                    // Двойной щелчок — открыть в Telegram. Свой детектор: combinedClickable
+                    // задерживает одиночный клик, и выбор строки «тормозил» бы.
+                    val now = System.currentTimeMillis()
+                    if (selected && now - lastClick < 400) state.openInTelegram(row.url) else state.select(row.url)
+                    lastClick = now
+                }
+                .padding(end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.width(3.dp).height(if (selected) 16.dp else 0.dp).clip(CircleShape).background(c.accent))
+            Box(Modifier.width(Cols.star), contentAlignment = Alignment.Center) {
+                FluentIconButton(
+                    if (favorite) Icons.Filled.Star else Icons.Outlined.StarOutline,
+                    if (favorite) "Убрать из избранного" else "В избранное",
+                    { state.toggleFavorite(row.url) },
+                    tint = if (favorite) c.caution else c.textTertiary,
+                    size = 28.dp,
+                )
+            }
+            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                StatusDot(row.quality)
+                Spacer(Modifier.width(10.dp))
+                FText(row.label, Fluent.type.body, maxLines = 1)
+            }
+            Box(Modifier.width(Cols.protocol)) { ProtocolBadge(row.protocol) }
+            FText("${row.latencyMs} ms", Fluent.type.bodyStrong, qualityColor(row.quality), Modifier.width(Cols.ping), maxLines = 1)
+            FText(if (row.samples > 1) "±${row.jitterMs} ms" else "—", Fluent.type.body, c.textSecondary, Modifier.width(Cols.jitter), maxLines = 1)
+            if (showSource) FText(row.source.ifBlank { "—" }, Fluent.type.caption, c.textTertiary, Modifier.width(Cols.source), maxLines = 1)
+            Row(Modifier.width(Cols.actions), horizontalArrangement = Arrangement.End) {
+                if (hovered || selected) {
+                    if (links?.tg != null) {
+                        FluentIconButton(Icons.AutoMirrored.Outlined.Send, "Открыть в Telegram (Enter)", { state.openInTelegram(row.url) }, tint = c.accentText, size = 30.dp)
+                    }
+                    FluentIconButton(Icons.Outlined.ContentCopy, "Скопировать (Ctrl+C)", { state.copyProxy(row.url) }, size = 30.dp)
+                }
+            }
         }
-        ProtocolBadge(row.protocol)
-        HSpace(KupuSpacing.md)
-        Text(
-            "${row.latencyMs} ms",
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Bold,
-            color = qualityColor(row.quality),
+    }
+}
+
+/** Контекстное меню строки (правая кнопка мыши). */
+@Composable
+private fun ProxyContextMenu(state: AppState, row: ProxyRow, content: @Composable () -> Unit) {
+    ContextMenuArea(
+        items = {
+            val links = ProxyLinks.of(row.url)
+            buildList {
+                if (links?.tg != null) add(ContextMenuItem("Открыть в Telegram") { state.openInTelegram(row.url) })
+                add(ContextMenuItem("Скопировать прокси") { state.copyProxy(row.url) })
+                if (links?.tg != null) add(ContextMenuItem("Скопировать tg://-ссылку") { state.copyProxy(row.url, CopyKind.TG) })
+                add(ContextMenuItem("Скопировать адрес") { state.copyProxy(row.url, CopyKind.ADDRESS) })
+                add(
+                    ContextMenuItem(if (row.url in state.favorites) "Убрать из избранного" else "Добавить в избранное") {
+                        state.toggleFavorite(row.url)
+                    },
+                )
+            }
+        },
+        content = content,
+    )
+}
+
+@Composable
+private fun DetailsPane(state: AppState, modifier: Modifier) {
+    val c = Fluent.colors
+    val row = state.selectedRow
+    val scroll = rememberScrollState()
+    FluentCard(modifier, padding = PaddingValues(0.dp)) {
+        if (row == null) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                EmptyState("Выберите прокси", "Подробности, QR-код и действия появятся здесь.", icon = Icons.Outlined.Info)
+            }
+            return@FluentCard
+        }
+        val links = remember(row.url) { ProxyLinks.of(row.url) }
+        Box(Modifier.fillMaxSize()) {
+            Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(20.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    StatusDot(row.quality, size = 10.dp)
+                    Spacer(Modifier.width(10.dp))
+                    SelectionContainer(Modifier.weight(1f)) {
+                        FText(row.label, Fluent.type.subtitle, maxLines = 2)
+                    }
+                    val favorite = row.url in state.favorites
+                    FluentIconButton(
+                        if (favorite) Icons.Filled.Star else Icons.Outlined.StarOutline,
+                        if (favorite) "Убрать из избранного" else "В избранное",
+                        { state.toggleFavorite(row.url) },
+                        tint = if (favorite) c.caution else c.textSecondary,
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    ProtocolBadge(row.protocol)
+                    Tag(qualityLabel(row.quality), qualityColor(row.quality))
+                }
+                Spacer(Modifier.height(18.dp))
+                if (links?.tg != null) {
+                    FluentButton(
+                        "Открыть в Telegram",
+                        { state.openInTelegram(row.url) },
+                        Modifier.fillMaxWidth(),
+                        style = ButtonStyle.ACCENT,
+                        icon = Icons.AutoMirrored.Outlined.Send,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FluentButton("Скопировать прокси", { state.copyProxy(row.url) }, Modifier.weight(1f), icon = Icons.Outlined.ContentCopy)
+                        FluentTooltip("Скопировать tg://-ссылку") {
+                            FluentButton("tg://", { state.copyProxy(row.url, CopyKind.TG) })
+                        }
+                    }
+                } else {
+                    FluentButton(
+                        "Скопировать адрес",
+                        { state.copyProxy(row.url, CopyKind.ADDRESS) },
+                        Modifier.fillMaxWidth(),
+                        style = ButtonStyle.ACCENT,
+                        icon = Icons.Outlined.ContentCopy,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    FText(
+                        "Telegram не принимает ${protocolLabel(row.protocol)}-прокси ссылкой: добавьте адрес вручную " +
+                            "или включите локальный прокси ниже.",
+                        Fluent.type.caption,
+                        c.textSecondary,
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                FluentButton("Скопировать адрес host:port", { state.copyProxy(row.url, CopyKind.ADDRESS) }, Modifier.fillMaxWidth(), style = ButtonStyle.SUBTLE)
+
+                Spacer(Modifier.height(12.dp))
+                FluentDivider()
+                Spacer(Modifier.height(8.dp))
+                KeyValueRow("Задержка", "${row.latencyMs} ms", valueColor = qualityColor(row.quality))
+                KeyValueRow("Jitter", if (row.samples > 1) "±${row.jitterMs} ms" else "—")
+                KeyValueRow("Замеров", row.samples.toString())
+                KeyValueRow("Источник", row.source.ifBlank { "—" })
+                KeyValueRow("Проверен", if (row.checkedAt > 0) formatTime(row.checkedAt) else "—")
+
+                val qrText = links?.tme
+                if (qrText != null) {
+                    Spacer(Modifier.height(16.dp))
+                    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                        QrCode(qrText)
+                        Spacer(Modifier.height(8.dp))
+                        FText("Наведите камеру телефона — прокси откроется в Telegram", Fluent.type.caption, c.textSecondary)
+                    }
+                }
+
+                if (row.protocol != ProxyProtocol.MTPROTO) {
+                    Spacer(Modifier.height(16.dp))
+                    FluentDivider()
+                    Spacer(Modifier.height(12.dp))
+                    LocalProxyBlock(state, row)
+                }
+            }
+            VerticalScrollbar(rememberScrollbarAdapter(scroll), Modifier.align(Alignment.CenterEnd).fillMaxHeight().padding(2.dp))
+        }
+    }
+}
+
+@Composable
+private fun LocalProxyBlock(state: AppState, row: ProxyRow) {
+    val c = Fluent.colors
+    val target = state.localProxy.currentTarget
+    val runningHere = state.localProxyRunning && target?.host == row.host && target.port == row.port
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(Icons.Outlined.Lan, null, tint = c.textPrimary, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            FText("Локальный прокси", Fluent.type.bodyStrong)
+            FText("HTTP-прокси на 127.0.0.1 для браузера и системы", Fluent.type.caption, c.textSecondary)
+        }
+        ToggleSwitch(
+            checked = state.localProxyRunning,
+            onCheckedChange = {
+                if (state.localProxyRunning && !runningHere) {
+                    state.toggleLocalProxy() // остановить старый
+                    state.toggleLocalProxy() // запустить через выбранный
+                } else {
+                    state.toggleLocalProxy()
+                }
+            },
+            showLabel = false,
         )
-        IconButton(onClick = onFavorite, modifier = Modifier.size(KupuSpacing.xxl)) {
-            Icon(
-                imageVector = if (favorite) Icons.Filled.Star else Icons.Outlined.StarOutline,
-                contentDescription = "Избранное",
-                tint = if (favorite) scheme.tertiary else scheme.onSurfaceVariant,
-                modifier = Modifier.size(18.dp),
-            )
+    }
+    if (state.localProxyRunning) {
+        Spacer(Modifier.height(10.dp))
+        KeyValueRow("Адрес", "127.0.0.1:${state.localProxy.localPort}")
+        target?.let { KeyValueRow("Через", "${it.host}:${it.port}") }
+        KeyValueRow("Отправлено", state.traffic.formatBytes(state.traffic.upBytes))
+        KeyValueRow("Получено", state.traffic.formatBytes(state.traffic.downBytes))
+        if (!runningHere) {
+            FText("Сейчас работает через другой прокси — переключатель запустит через выбранный.", Fluent.type.caption, c.caution)
         }
     }
 }
@@ -563,179 +942,92 @@ private fun ProxyTableRow(
 // region Источники
 
 @Composable
-private fun SourcesScreen(state: AppState) {
-    Column(
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(KupuSpacing.xl),
-        verticalArrangement = Arrangement.spacedBy(KupuSpacing.md),
-    ) {
-        Text("Источники прокси", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Text(
-            "Поддерживаются MTProto, SOCKS5, HTTP и WEB. Форматы: ссылки, host:port:secret, " +
-                "JSON, YAML, markdown-таблицы, HTML и base64-блоки.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-
-        VSpace(KupuSpacing.sm)
-        StockFeedsBlock(state)
-
-        VSpace(KupuSpacing.sm)
-        Text("Локальный файл", style = MaterialTheme.typography.titleMedium)
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Button(
-                onClick = { pickProxyFile()?.let(state::scanFile) },
-                enabled = !state.busy,
-                modifier = Modifier.height(KupuControl.buttonHeight),
-            ) {
-                Icon(Icons.Filled.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
-                HSpace(KupuSpacing.sm)
-                Text("Выбрать файл…", fontWeight = FontWeight.SemiBold)
+private fun SourcesPage(state: AppState) {
+    val c = Fluent.colors
+    val scroll = rememberScrollState()
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(PagePadding), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            PageHeader(
+                "Источники",
+                "MTProto, SOCKS5, HTTP и HTTPS · ссылки, host:port:secret, JSON, YAML, CSV, HTML и base64",
+            )
+            Spacer(Modifier.height(12.dp))
+            PageBanners(state)
+            if (state.busy || state.scan.total > 0 && state.scan.running) {
+                FluentCard(Modifier.fillMaxWidth()) { ScanStrip(state.scan) }
             }
-        }
 
-        VSpace(KupuSpacing.sm)
-        Text("Источник по URL", style = MaterialTheme.typography.titleMedium)
-        UrlScanBlock(state)
-
-        VSpace(KupuSpacing.md)
-        ScanProgress(state.scan)
-
-        if (state.errorMessage != null) {
-            Card(
-                shape = MaterialTheme.shapes.medium,
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Row(
-                    Modifier.padding(KupuSpacing.md).fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Text(
-                        state.errorMessage.orEmpty(),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                    )
-                    IconButton(onClick = { state.errorMessage = null }) {
-                        Icon(Icons.Filled.Close, contentDescription = "Закрыть", modifier = Modifier.size(16.dp))
-                    }
-                }
-            }
-        }
-
-        if (state.rows.isNotEmpty()) {
-            Text("Найдено: ${state.rows.size}", style = MaterialTheme.typography.titleMedium)
-            state.rows.take(3).forEach { TopRow(it) }
-            if (state.rows.size > 3) {
-                TextButton(onClick = { state.tab = DesktopTab.PROXIES }) {
-                    Text("Открыть все ${state.rows.size} в списке")
-                }
-            }
-        }
-        VSpace(KupuSpacing.xxl)
-    }
-}
-
-/** Встроенные источники из каталога proxy-feeds репозитория. */
-@Composable
-private fun StockFeedsBlock(state: AppState) {
-    val scheme = MaterialTheme.colorScheme
-    Card(
-        shape = MaterialTheme.shapes.medium,
-        colors = CardDefaults.cardColors(containerColor = scheme.surface),
-        border = androidx.compose.foundation.BorderStroke(1.dp, scheme.outlineVariant),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(Modifier.padding(KupuSpacing.cardPadding), verticalArrangement = Arrangement.spacedBy(KupuSpacing.sm)) {
-            Text("Встроенные источники", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "Зеркала proxy-feeds из репозитория KupuProxy, обновляются каждые 4 часа. " +
-                    "Порядок загрузки: GitHub → jsDelivr → снимок внутри приложения" +
-                    (StockFeeds.bundledSnapshotDate()?.let { " (от $it)" } ?: "") + ".",
-                style = MaterialTheme.typography.bodySmall,
-                color = scheme.onSurfaceVariant,
+            GroupHeader("Встроенные источники")
+            FText(
+                "Зеркала proxy-feeds из репозитория KupuProxy обновляются каждые 4 часа. Порядок загрузки: " +
+                    "GitHub → jsDelivr → снимок внутри приложения" + (StockFeeds.bundledSnapshotDate()?.let { " (от $it)" } ?: "") + ".",
+                Fluent.type.caption,
+                c.textSecondary,
+                Modifier.padding(bottom = 6.dp),
             )
             StockFeeds.all.forEach { feed ->
                 val status = state.feedStatuses.firstOrNull { it.feedId == feed.id }
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(feed.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                            HSpace(KupuSpacing.sm)
-                            ProtocolBadge(feed.protocol)
-                        }
-                        Text(
-                            feed.description + when {
-                                status == null -> ""
-                                status.count > 0 -> " · ${status.count} шт. (${status.origin?.label ?: "—"})"
-                                else -> " · ошибка: ${status.error ?: "нет данных"}"
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (status != null && status.count == 0) scheme.error else scheme.onSurfaceVariant,
-                        )
-                    }
-                    Switch(
-                        checked = feed.id in state.settings.stockFeeds,
-                        onCheckedChange = { state.toggleStockFeed(feed.id) },
-                        enabled = !state.busy,
+                SettingsCard(
+                    title = feed.title,
+                    description = feed.description + when {
+                        status == null -> ""
+                        status.count > 0 -> " · загружено ${status.count} (${status.origin?.label ?: "—"})"
+                        else -> " · ошибка: ${status.error ?: "нет данных"}"
+                    },
+                    icon = Icons.Outlined.Public,
+                ) {
+                    ProtocolBadge(feed.protocol)
+                    ToggleSwitch(feed.id in state.settings.stockFeeds, { state.toggleStockFeed(feed.id) }, enabled = !state.busy)
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (state.busy) {
+                    FluentButton("Остановить", { state.cancelScan() }, icon = Icons.Outlined.Stop)
+                } else {
+                    FluentButton(
+                        "Сканировать встроенные",
+                        { state.scanStock() },
+                        style = ButtonStyle.ACCENT,
+                        icon = Icons.Outlined.PlayArrow,
+                        enabled = state.settings.stockFeeds.isNotEmpty(),
+                    )
+                    FluentButton(
+                        "Только снимок, без сети",
+                        { state.scanStock(offline = true) },
+                        icon = Icons.Outlined.OfflineBolt,
+                        enabled = state.settings.stockFeeds.isNotEmpty(),
                     )
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(KupuSpacing.md), verticalAlignment = Alignment.CenterVertically) {
-                Button(
-                    onClick = { state.scanStock() },
-                    enabled = !state.busy && state.settings.stockFeeds.isNotEmpty(),
-                    modifier = Modifier.height(KupuControl.buttonHeight),
-                ) {
-                    Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
-                    HSpace(KupuSpacing.sm)
-                    Text("Сканировать встроенные", fontWeight = FontWeight.SemiBold)
-                }
-                OutlinedButton(
-                    onClick = { state.scanStock(offline = true) },
-                    enabled = !state.busy && state.settings.stockFeeds.isNotEmpty(),
-                    modifier = Modifier.height(KupuControl.buttonHeight),
-                ) {
-                    Text("Без загрузки (снимок)")
-                }
-                if (state.busy) {
-                    TextButton(onClick = { state.cancelScan() }) { Text("Стоп") }
-                }
+
+            GroupHeader("Свои списки")
+            SettingsCard(
+                "Файл со списком",
+                description = ".txt, .json, .yaml, .csv, .md, .html — любой формат, который понимает парсер",
+                icon = Icons.Outlined.FolderOpen,
+            ) {
+                FluentButton("Выбрать файл…", { pickProxyFile()?.let(state::scanFile) }, enabled = !state.busy)
+            }
+            var url by remember { mutableStateOf("") }
+            val trimmed = url.trim()
+            val valid = trimmed.startsWith("https://", true) || trimmed.startsWith("http://", true)
+            SettingsCard("Список по ссылке", description = "Прямая ссылка на текстовый список (raw GitHub, Gist, свой сервер)", icon = Icons.Outlined.Link) {
+                TextBox(url, { url = it }, "https://…/proxies.txt", Modifier.width(320.dp), onSubmit = { if (valid && !state.busy) state.scanUrl(trimmed) })
+                FluentButton("Загрузить", { state.scanUrl(trimmed) }, style = ButtonStyle.ACCENT, enabled = valid && !state.busy)
+            }
+            SettingsCard(
+                "Из буфера обмена",
+                description = "Скопируйте ссылки tg://, t.me, socks5:// или строки host:port — KupuProxy разберёт и проверит их",
+                icon = Icons.Outlined.ContentPaste,
+            ) {
+                FluentButton("Вставить и проверить", { state.scanClipboard() }, enabled = !state.busy)
             }
             if (state.sourceLabel != "—") {
-                Text(
-                    "Последний источник: ${state.sourceLabel}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = scheme.onSurfaceVariant,
-                )
+                FText("Последний источник: ${state.sourceLabel}", Fluent.type.caption, c.textTertiary, Modifier.padding(top = 8.dp))
             }
         }
-    }
-}
-
-@Composable
-private fun UrlScanBlock(state: AppState) {
-    var url by remember { mutableStateOf("") }
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(KupuSpacing.md)) {
-        OutlinedTextField(
-            value = url,
-            onValueChange = { url = it },
-            label = { Text("https://…/proxies.txt") },
-            singleLine = true,
-            modifier = Modifier.weight(1f),
-        )
-        val trimmed = url.trim()
-        val valid = trimmed.startsWith("https://", true) || trimmed.startsWith("http://", true)
-        Button(
-            onClick = { if (valid) state.scanUrl(trimmed) },
-            enabled = valid && !state.busy,
-            modifier = Modifier.height(KupuControl.buttonHeight),
-        ) {
-            Text("Загрузить", fontWeight = FontWeight.SemiBold)
-        }
+        VerticalScrollbar(rememberScrollbarAdapter(scroll), Modifier.align(Alignment.CenterEnd).fillMaxHeight().padding(vertical = 4.dp, horizontal = 2.dp))
     }
 }
 
@@ -744,138 +1036,204 @@ private fun UrlScanBlock(state: AppState) {
 // region Настройки
 
 @Composable
-private fun SettingsScreen(state: AppState) {
+private fun SettingsPage(state: AppState) {
+    val c = Fluent.colors
     val settings = state.settings
-    val scheme = MaterialTheme.colorScheme
+    val scroll = rememberScrollState()
+    var detectedTelegram by remember { mutableStateOf<String?>(null) }
+    var detecting by remember { mutableStateOf(true) }
+    LaunchedEffect(settings.telegramPath) {
+        detecting = true
+        detectedTelegram = withContext(Dispatchers.IO) { TelegramLauncher.detectExecutable()?.path }
+        detecting = false
+    }
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(PagePadding), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            PageHeader("Настройки")
+            Spacer(Modifier.height(8.dp))
+            PageBanners(state)
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(KupuSpacing.xl),
-        verticalArrangement = Arrangement.spacedBy(KupuSpacing.md),
-    ) {
-        Text("Настройки", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-
-        SettingSwitch("Автозапуск при входе в систему", settings.autostart, enabled = AutoStartFlag()) { checked ->
-            val applied = if (checked) AutoStartBridge.set(true) else AutoStartBridge.set(false)
-            if (checked && !applied) {
-                state.errorMessage = "Не удалось включить автозапуск для текущей системы"
-            }
-            state.updateSettings { it.copy(autostart = checked && applied) }
-        }
-
-        SettingSwitch("Сворачивать в трей вместо закрытия", settings.minimizeToTray) { checked ->
-            state.updateSettings { it.copy(minimizeToTray = checked) }
-        }
-
-        SettingSwitch("Запускаться свёрнутым в трей", settings.startMinimized) { checked ->
-            state.updateSettings { it.copy(startMinimized = checked) }
-        }
-
-        HorizontalDivider()
-
-        Text("Тема", style = MaterialTheme.typography.titleMedium)
-        Row(horizontalArrangement = Arrangement.spacedBy(KupuSpacing.sm)) {
-            ThemeMode.entries.forEach { mode ->
-                FilterChip(
-                    selected = settings.themeMode == mode,
-                    onClick = { state.updateSettings { it.copy(themeMode = mode) } },
-                    label = {
-                        Text(
-                            when (mode) {
-                                com.kupuproxy.desktop.ThemeMode.SYSTEM -> "Системная"
-                                com.kupuproxy.desktop.ThemeMode.LIGHT -> "Светлая"
-                                com.kupuproxy.desktop.ThemeMode.DARK -> "Тёмная"
-                            },
-                        )
+            GroupHeader("Оформление")
+            SettingsCard("Тема", description = "Светлая, тёмная или как в системе", icon = Icons.Outlined.DarkMode) {
+                ComboBox(
+                    ThemeMode.entries,
+                    settings.themeMode,
+                    {
+                        when (it) {
+                            ThemeMode.SYSTEM -> "Как в системе"
+                            ThemeMode.LIGHT -> "Светлая"
+                            ThemeMode.DARK -> "Тёмная"
+                        }
                     },
+                    { mode -> state.updateSettings { it.copy(themeMode = mode) } },
                 )
             }
-        }
-
-        HorizontalDivider()
-
-        Text("Протоколы для проверки", style = MaterialTheme.typography.titleMedium)
-        Row(horizontalArrangement = Arrangement.spacedBy(KupuSpacing.sm)) {
-            ProxyProtocol.entries.forEach { protocol ->
-                FilterChip(
-                    selected = protocol in settings.protocolFilter,
-                    onClick = { state.toggleProtocol(protocol) },
-                    label = { Text(protocolLabel(protocol)) },
+            SettingsCard(
+                "Акцентный цвет",
+                description = "Системный берётся из «Параметры → Персонализация → Цвета» Windows",
+                icon = Icons.Outlined.ColorLens,
+            ) {
+                ComboBox(
+                    AccentMode.entries,
+                    settings.accent,
+                    {
+                        when (it) {
+                            AccentMode.SYSTEM -> "Системный"
+                            AccentMode.TEAL -> "Бирюзовый KupuProxy"
+                            AccentMode.BLUE -> "Синий Fluent"
+                        }
+                    },
+                    { mode -> state.updateSettings { it.copy(accent = mode) } },
                 )
             }
+
+            GroupHeader("Telegram")
+            val custom = settings.telegramPath.takeIf { it.isNotBlank() }
+            SettingsCard(
+                "Telegram Desktop",
+                description = when {
+                    custom != null -> "Указан вручную: $custom"
+                    detecting -> "Поиск…"
+                    detectedTelegram != null -> "Найден: $detectedTelegram"
+                    else -> "Не найден автоматически. Для portable-версии укажите путь к Telegram.exe — иначе ссылка будет копироваться в буфер."
+                },
+                icon = Icons.AutoMirrored.Outlined.Send,
+            ) {
+                if (custom != null) {
+                    FluentButton("Сбросить", { state.updateSettings { it.copy(telegramPath = "") } }, style = ButtonStyle.SUBTLE)
+                }
+                FluentButton("Обзор…", {
+                    pickTelegramExecutable()?.let { file -> state.updateSettings { it.copy(telegramPath = file.absolutePath) } }
+                })
+            }
+
+            GroupHeader("Сканирование")
+            SettingsCard("Протоколы", description = "Какие типы прокси проверять и показывать", icon = Icons.Outlined.Tune) {
+                ProxyProtocol.entries.forEach { protocol ->
+                    ToggleChip(protocolLabel(protocol), protocol in settings.protocolFilter, { state.toggleProtocol(protocol) })
+                }
+            }
+            SliderCard(
+                "Потоков проверки: ${settings.scanThreads}",
+                "Больше — быстрее, но сильнее нагружает сеть. TCP-префлайт использует втрое больше потоков.",
+                Icons.Outlined.Speed,
+                settings.scanThreads.toFloat(),
+                16f..256f,
+            ) { v -> state.updateSettings { it.copy(scanThreads = (v / 8f).roundToInt() * 8) } }
+            SliderCard(
+                "Таймаут соединения: ${settings.connectTimeoutMs} ms",
+                "Меньше — быстрее скан, но медленные прокси будут отброшены",
+                Icons.Outlined.Timer,
+                settings.connectTimeoutMs.toFloat(),
+                500f..3000f,
+            ) { v -> state.updateSettings { it.copy(connectTimeoutMs = (v / 100f).roundToInt() * 100) } }
+            SliderCard(
+                "Замеров на прокси: ${settings.jitterSamples}",
+                "1 — быстрее всего; 3 и больше — точнее jitter. Дополнительные замеры делаются только для рабочих прокси.",
+                Icons.Outlined.History,
+                settings.jitterSamples.toFloat(),
+                1f..5f,
+                steps = 3,
+            ) { v -> state.updateSettings { it.copy(jitterSamples = v.roundToInt().coerceIn(1, 5)) } }
+            SliderCard(
+                "Максимум прокси за скан: ${settings.maxToCheck}",
+                "Ограничивает число проверяемых записей из всех источников",
+                Icons.Outlined.Layers,
+                settings.maxToCheck.toFloat(),
+                100f..10_000f,
+            ) { v -> state.updateSettings { it.copy(maxToCheck = (v / 50f).roundToInt() * 50) } }
+            SettingsCard("Избранные — первыми", description = "Избранные прокси всегда в начале списка", icon = Icons.Filled.Star) {
+                ToggleSwitch(settings.favoritesFirst, { v -> state.updateSettings { it.copy(favoritesFirst = v) } })
+            }
+            SettingsCard("Сканировать при запуске", description = "Сразу проверять встроенные источники после открытия", icon = Icons.Outlined.PlayArrow) {
+                ToggleSwitch(settings.scanOnStart, { v -> state.updateSettings { it.copy(scanOnStart = v) } })
+            }
+            SettingsCard("Уведомлять о завершении скана", description = "Уведомление в трее, когда окно свёрнуто", icon = Icons.Outlined.Notifications) {
+                ToggleSwitch(settings.notifyOnScanEnd, { v -> state.updateSettings { it.copy(notifyOnScanEnd = v) } })
+            }
+
+            GroupHeader("Система")
+            SettingsCard("Автозапуск при входе в систему", icon = Icons.Outlined.PowerSettingsNew) {
+                ToggleSwitch(settings.autostart, { checked ->
+                    val applied = AutoStartBridge.set(checked)
+                    if (checked && !applied) state.errorMessage = "Не удалось включить автозапуск для текущей системы"
+                    state.updateSettings { it.copy(autostart = checked && applied) }
+                }, enabled = AutoStart.isSupported())
+            }
+            SettingsCard("Сворачивать в трей вместо закрытия", icon = Icons.Outlined.Layers) {
+                ToggleSwitch(settings.minimizeToTray, { v -> state.updateSettings { it.copy(minimizeToTray = v) } })
+            }
+            SettingsCard("Запускаться свёрнутым в трей", icon = Icons.Outlined.Layers) {
+                ToggleSwitch(settings.startMinimized, { v -> state.updateSettings { it.copy(startMinimized = v) } })
+            }
+
+            GroupHeader("Данные")
+            SettingsCard("Статистика трафика", description = "Счётчики локального прокси за сессию", icon = Icons.Outlined.SwapVert) {
+                FluentButton("Сбросить", { state.resetTraffic() })
+            }
+            SettingsCard("Избранное", description = "${settings.favorites.size} прокси", icon = Icons.Outlined.StarOutline) {
+                FluentButton("Очистить", { state.clearFavorites() }, enabled = settings.favorites.isNotEmpty())
+            }
+            SettingsCard("Папка данных", description = AppPaths.dataDir().path, icon = Icons.Outlined.Folder) {
+                FluentButton("Открыть", { SystemActions.openFolder(AppPaths.dataDir()) })
+            }
+
+            GroupHeader("О программе")
+            SettingsCard("KupuProxy $DESKTOP_VERSION", description = "Поиск и проверка прокси для Telegram · Android и ПК", icon = Icons.Outlined.Info) {
+                FluentButton(
+                    if (state.updateChecking) "Проверка…" else "Проверить обновления",
+                    { state.checkForUpdates() },
+                    enabled = !state.updateChecking,
+                )
+                FluentButton("GitHub", { SystemActions.browse(UpdateChecker.RELEASES_URL) }, style = ButtonStyle.SUBTLE, icon = Icons.AutoMirrored.Outlined.OpenInNew)
+            }
+            SettingsCard("Проверять обновления при запуске", icon = Icons.Outlined.Refresh) {
+                ToggleSwitch(settings.checkUpdates, { v -> state.updateSettings { it.copy(checkUpdates = v) } })
+            }
+            SettingsCard(
+                "Горячие клавиши",
+                description = "Ctrl+R / F5 — скан · Ctrl+F — поиск · Enter — открыть в Telegram · Ctrl+C — скопировать · " +
+                    "↑/↓ — выбор · Ctrl+1…4 — разделы · Esc — остановить скан",
+                icon = Icons.Outlined.Keyboard,
+            )
         }
-
-        HorizontalDivider()
-
-        Text("Проверка", style = MaterialTheme.typography.titleMedium)
-        Text(
-            "Замеров на прокси: ${settings.jitterSamples}",
-            style = MaterialTheme.typography.bodyMedium,
-            color = scheme.onSurfaceVariant,
-        )
-        Slider(
-            value = settings.jitterSamples.toFloat(),
-            onValueChange = { value -> state.updateSettings { it.copy(jitterSamples = value.roundToInt().coerceIn(1, 5)) } },
-            valueRange = 1f..5f,
-            steps = 3,
-        )
-        Text(
-            "Максимум прокси за скан: ${settings.maxToCheck}",
-            style = MaterialTheme.typography.bodyMedium,
-            color = scheme.onSurfaceVariant,
-        )
-        Slider(
-            value = settings.maxToCheck.toFloat(),
-            onValueChange = { value -> state.updateSettings { it.copy(maxToCheck = (value / 50f).roundToInt() * 50) } },
-            valueRange = 100f..10_000f,
-        )
-
-        HorizontalDivider()
-
-        Text("Данные", style = MaterialTheme.typography.titleMedium)
-        TextButton(onClick = { state.resetTraffic() }) { Text("Сбросить статистику трафика") }
-        TextButton(onClick = { state.clearFavorites() }, enabled = settings.favorites.isNotEmpty()) {
-            Text("Очистить избранное (${settings.favorites.size})")
-        }
-
-        VSpace(KupuSpacing.xxl)
+        VerticalScrollbar(rememberScrollbarAdapter(scroll), Modifier.align(Alignment.CenterEnd).fillMaxHeight().padding(vertical = 4.dp, horizontal = 2.dp))
     }
 }
 
 @Composable
-private fun SettingSwitch(
+private fun SliderCard(
     title: String,
-    checked: Boolean,
-    enabled: Boolean = true,
-    onChange: (Boolean) -> Unit,
+    description: String,
+    icon: ImageVector,
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    steps: Int = 0,
+    onChange: (Float) -> Unit,
 ) {
-    Row(
-        Modifier.fillMaxWidth().padding(vertical = KupuSpacing.xs),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = onChange, enabled = enabled)
+    SettingsCard(title, description = description, icon = icon) {
+        FluentSlider(value, onChange, range, Modifier.width(220.dp), steps = steps)
     }
 }
-
-@Composable
-private fun AutoStartFlag(): Boolean = com.kupuproxy.desktop.AutoStart.isSupported()
 
 // endregion
 
-@Composable
-fun LoadingIndicator() {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        CircularProgressIndicator()
-    }
+private fun ScanState.progressOrNull(): Float? = if (total > 0) processed.toFloat() / total else null
+
+private fun median(values: List<Int>): Int {
+    if (values.isEmpty()) return 0
+    val sorted = values.sorted()
+    return sorted[sorted.size / 2]
 }
-private fun qualityLabel(quality: LinkQuality): String = when (quality) {
-    LinkQuality.EXCELLENT -> "отличное"
-    LinkQuality.GOOD -> "хорошее"
-    LinkQuality.FAIR -> "среднее"
-    LinkQuality.POOR -> "слабое"
-    LinkQuality.UNKNOWN -> "неизвестно"
+
+private val timeFormat = DateTimeFormatter.ofPattern("dd.MM HH:mm")
+private val clockFormat = DateTimeFormatter.ofPattern("HH:mm")
+
+/** «14:32» для сегодняшних проверок, «03.05 14:32» — для старых. */
+internal fun formatTime(epochMs: Long): String {
+    if (epochMs <= 0) return "—"
+    val zone = ZoneId.systemDefault()
+    val time = Instant.ofEpochMilli(epochMs).atZone(zone)
+    val today = java.time.LocalDate.now(zone)
+    return if (time.toLocalDate() == today) "сегодня в ${clockFormat.format(time)}" else timeFormat.format(time)
 }

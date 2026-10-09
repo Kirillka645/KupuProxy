@@ -20,6 +20,8 @@ kotlin {
             implementation(compose.materialIconsExtended)
             implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.9.0")
             implementation("org.json:json:20240303")
+            // QR-коды прокси (та же версия, что в Android-клиенте).
+            implementation("com.google.zxing:core:3.5.3")
         }
         // Снимок встроенных источников (proxy-feeds/) вшивается в ресурсы: клиент работает
         // и без доступа к GitHub. Каталог генерируется задачей bundleStockFeeds.
@@ -44,7 +46,7 @@ compose.desktop {
             // упаковывается как 1.4.3 (последняя цифра → BUILD). Номер обязан расти от
             // релиза к релизу, иначе установщик .msi не обновит прошлую версию (1.4.0).
             // Полная версия показывается в заголовке окна и в трее (DESKTOP_VERSION).
-            packageVersion = "1.4.3"
+            packageVersion = "1.4.4"
             description = "KupuProxy — поиск и проверка Telegram-прокси"
             vendor = "KupuProxy"
 

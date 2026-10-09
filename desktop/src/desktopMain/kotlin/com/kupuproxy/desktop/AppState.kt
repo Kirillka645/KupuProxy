@@ -21,11 +21,24 @@ import kotlinx.coroutines.withContext
 
 /** Раздел главного окна. */
 enum class DesktopTab(val title: String) {
-    DASHBOARD("Обзор"),
+    DASHBOARD("Главная"),
     PROXIES("Прокси"),
     SOURCES("Источники"),
     SETTINGS("Настройки"),
 }
+
+/** Уровень InfoBar-сообщения. */
+enum class Severity { INFO, SUCCESS, WARNING, ERROR }
+
+/** Всплывающее уведомление (InfoBar внизу окна). */
+data class Notice(
+    val severity: Severity,
+    val title: String,
+    val message: String? = null,
+    val actionLabel: String? = null,
+    val action: (() -> Unit)? = null,
+    val id: Long = System.nanoTime(),
+)
 
 /** Итог загрузки одного встроенного фида — показывается на экране «Источники». */
 data class FeedStatus(
@@ -34,6 +47,9 @@ data class FeedStatus(
     val count: Int,
     val error: String? = null,
 )
+
+/** Что копировать. */
+enum class CopyKind { SHARE, TG, ADDRESS, ORIGINAL }
 
 class AppState(
     initialTab: DesktopTab = DesktopTab.DASHBOARD,
@@ -68,6 +84,28 @@ class AppState(
         private set
     var feedStatuses by mutableStateOf(emptyList<FeedStatus>())
         private set
+    /** Текущее всплывающее уведомление. */
+    var notice by mutableStateOf<Notice?>(null)
+        private set
+    /** Показывать только избранные. */
+    var onlyFavorites by mutableStateOf(false)
+    /** Время последнего завершённого скана (мс epoch); 0 — не было. */
+    var lastScanAt by mutableStateOf(0L)
+        private set
+    /** Список восстановлен из прошлого сеанса и ещё не перепроверен. */
+    var restoredFromCache by mutableStateOf(false)
+        private set
+    /** Растёт после каждого завершённого скана — Main показывает уведомление в трее. */
+    var scanFinishedCount by mutableStateOf(0)
+        private set
+    /** Доступное обновление клиента. */
+    var update by mutableStateOf<DesktopUpdate?>(null)
+        private set
+    var updateChecking by mutableStateOf(false)
+        private set
+    /** Растёт при Ctrl+F — экран «Прокси» переводит фокус в поиск. */
+    var searchFocusRequests by mutableStateOf(0)
+        private set
 
     private var scanJob: Job? = null
     private var saveJob: Job? = null
@@ -75,10 +113,26 @@ class AppState(
     private var lastTrafficTotal = 0L
 
     val filteredRows: List<ProxyRow>
-        get() = ProxyFilter.apply(
-            rows,
-            settings.toScanConfig().copy(searchQuery = searchQuery),
+        get() = ProxyFilter.sort(
+            ProxyFilter.apply(rows, settings.toScanConfig().copy(searchQuery = searchQuery))
+                .let { list -> if (onlyFavorites) list.filter { it.url in settings.favorites } else list },
+            settings.sortMode,
+            if (settings.favoritesFirst) settings.favorites else emptySet(),
         )
+
+    init {
+        if (persist) {
+            val cached = ResultsStore.load()
+            if (cached.isNotEmpty()) {
+                rows = cached.sortedWith(ROW_ORDER)
+                selectedUrl = rows.first().url
+                restoredFromCache = true
+                lastScanAt = cached.maxOf { it.checkedAt }
+                statusMessage = "Список из прошлого сеанса: ${cached.size} прокси — перепроверьте перед использованием"
+            }
+            if (settings.checkUpdates) checkForUpdates(silent = true)
+        }
+    }
 
     val selectedRow: ProxyRow?
         get() = selectedUrl?.let { url -> rows.firstOrNull { it.url == url } }
@@ -178,6 +232,7 @@ class AppState(
             previous?.join()
             engine.reset()
             rows = emptyList()
+            restoredFromCache = false
             selectedUrl = null
             scan = ScanState(running = true, phase = loadingMessage)
             try {
@@ -190,7 +245,6 @@ class AppState(
                 }
                 statusMessage = "Сканирование…"
                 val config = settings.toScanConfig()
-                val seen = HashSet<String>()
                 val result = withContext(Dispatchers.IO) {
                     engine.scanEntries(
                         entries = entries,
@@ -205,8 +259,9 @@ class AppState(
                         },
                         onFound = { row ->
                             ui {
-                                if (scanJob?.isActive == true && seen.add(row.url)) {
-                                    rows = (rows + row).sortedWith(ROW_ORDER)
+                                if (scanJob?.isActive == true) {
+                                    // Фаза 3 присылает ту же строку с уточнённым jitter — заменяем.
+                                    rows = (rows.filterNot { it.url == row.url } + row).sortedWith(ROW_ORDER)
                                 }
                             }
                         },
@@ -214,11 +269,19 @@ class AppState(
                 }
                 rows = result.distinctBy { it.url }.sortedWith(ROW_ORDER)
                 scan = scan.copy(running = false, found = rows.size)
+                restoredFromCache = false
+                lastScanAt = System.currentTimeMillis()
                 statusMessage = if (engine.isCancelled) {
                     "Сканирование остановлено: ${rows.size} рабочих прокси"
                 } else {
                     "Готово: ${rows.size} рабочих прокси"
                 }
+                if (rows.isNotEmpty() && selectedUrl == null) selectedUrl = rows.first().url
+                if (persist) {
+                    val snapshot = rows
+                    scope.launch(Dispatchers.IO) { ResultsStore.save(snapshot) }
+                }
+                scanFinishedCount++
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -251,6 +314,165 @@ class AppState(
         return out
     }
 
+    /** Перепроверяет уже найденные прокси — быстро освежить список перед использованием. */
+    fun recheckFound() {
+        val urls = rows.map { it.url }
+        if (urls.isEmpty()) {
+            scanStock()
+            return
+        }
+        val sources = rows.associate { it.url to it.source }
+        launchScan("Перепроверка ${urls.size} прокси…") {
+            urls.mapNotNull { url -> ProxyParser.fromUrl(url)?.copy(sourceName = sources[url].orEmpty()) }
+        }
+    }
+
+    /** Разбирает список из буфера обмена и проверяет его. */
+    fun scanClipboard() {
+        val text = Clipboard.read()
+        if (text.isNullOrBlank()) {
+            notify(Severity.WARNING, "Буфер обмена пуст", "Скопируйте список прокси или ссылку и повторите.")
+            return
+        }
+        launchScan("Разбор буфера обмена…") {
+            sourceLabel = "буфер обмена"
+            ProxyParser.parse(text, sourceId = "clipboard", sourceName = "Буфер обмена")
+        }
+    }
+
+    // region Действия с прокси
+
+    fun notify(severity: Severity, title: String, message: String? = null, actionLabel: String? = null, action: (() -> Unit)? = null) {
+        notice = Notice(severity, title, message, actionLabel, action)
+    }
+
+    fun dismissNotice(id: Long? = null) {
+        if (id == null || notice?.id == id) notice = null
+    }
+
+    /**
+     * Открывает прокси в Telegram Desktop. Браузер больше не открывается: если Telegram не
+     * найден, ссылка копируется в буфер и показывается подсказка.
+     */
+    fun openInTelegram(url: String = selectedUrl.orEmpty()) {
+        if (url.isEmpty()) return
+        val links = ProxyLinks.of(url)
+        if (links == null) {
+            notify(Severity.ERROR, "Не удалось разобрать ссылку")
+            return
+        }
+        if (links.tg == null) {
+            Clipboard.copy(links.address)
+            notify(
+                Severity.INFO,
+                "Адрес скопирован",
+                "Telegram не принимает ${links.protocol.name}-прокси ссылкой. Добавьте адрес вручную " +
+                    "(Настройки → Продвинутые → Тип соединения) или включите локальный прокси.",
+            )
+            return
+        }
+        val customPath = settings.telegramPath
+        scope.launch(Dispatchers.IO) {
+            val result = TelegramLauncher.openTg(links.tg, customPath)
+            ui {
+                when (result) {
+                    TelegramOpenResult.OPENED_APP, TelegramOpenResult.OPENED_HANDLER -> notify(
+                        Severity.SUCCESS,
+                        "Открываю в Telegram",
+                        "Подтвердите подключение к прокси в окне Telegram.",
+                    )
+                    else -> {
+                        Clipboard.copy(links.tme ?: links.tg)
+                        notify(
+                            Severity.WARNING,
+                            "Telegram Desktop не найден — ссылка скопирована",
+                            "Вставьте её в любой чат Telegram (например, «Избранное») и нажмите на неё. " +
+                                "Или укажите путь к Telegram.exe в настройках.",
+                            actionLabel = "Указать путь",
+                            action = { tab = DesktopTab.SETTINGS },
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    /** Копирует прокси: t.me-ссылка для MTProto/SOCKS5, адрес — для HTTP/WEB. */
+    fun copyProxy(url: String = selectedUrl.orEmpty(), kind: CopyKind = CopyKind.SHARE) {
+        val links = ProxyLinks.of(url) ?: return
+        val text = when (kind) {
+            CopyKind.SHARE -> links.primaryCopy
+            CopyKind.TG -> links.tg ?: links.original
+            CopyKind.ADDRESS -> links.address
+            CopyKind.ORIGINAL -> links.original
+        }
+        if (Clipboard.copy(text)) {
+            notify(Severity.SUCCESS, "Скопировано", text.take(90) + if (text.length > 90) "…" else "")
+        } else {
+            notify(Severity.ERROR, "Буфер обмена недоступен")
+        }
+    }
+
+    /** Копирует все видимые (отфильтрованные) прокси — по одной ссылке на строку. */
+    fun copyAll() {
+        val list = filteredRows
+        if (list.isEmpty()) return
+        val text = list.joinToString("\n") { ProxyLinks.of(it.url)?.primaryCopy ?: it.url }
+        if (Clipboard.copy(text)) notify(Severity.SUCCESS, "Скопировано прокси: ${list.size}")
+    }
+
+    /** Сохраняет видимые прокси в текстовый файл. */
+    fun exportTo(file: File) {
+        val list = filteredRows
+        scope.launch(Dispatchers.IO) {
+            val result = runCatching {
+                file.writeText(list.joinToString("\n", postfix = "\n") { ProxyLinks.of(it.url)?.primaryCopy ?: it.url })
+            }
+            ui {
+                if (result.isSuccess) {
+                    notify(Severity.SUCCESS, "Сохранено ${list.size} прокси", file.absolutePath)
+                } else {
+                    notify(Severity.ERROR, "Не удалось сохранить файл", result.exceptionOrNull()?.message)
+                }
+            }
+        }
+    }
+
+    /** Выбор соседней строки клавишами ↑/↓. */
+    fun selectRelative(delta: Int) {
+        val list = filteredRows
+        if (list.isEmpty()) return
+        val index = list.indexOfFirst { it.url == selectedUrl }
+        val next = if (index < 0) 0 else (index + delta).coerceIn(0, list.lastIndex)
+        selectedUrl = list[next].url
+    }
+
+    fun requestSearchFocus() {
+        tab = DesktopTab.PROXIES
+        searchFocusRequests++
+    }
+
+    fun checkForUpdates(silent: Boolean = false) {
+        if (updateChecking) return
+        updateChecking = true
+        scope.launch(Dispatchers.IO) {
+            val found = runCatching { UpdateChecker.check() }
+            ui {
+                updateChecking = false
+                update = found.getOrNull()
+                if (!silent) {
+                    when {
+                        found.isFailure -> notify(Severity.ERROR, "Не удалось проверить обновления")
+                        update == null -> notify(Severity.SUCCESS, "Установлена последняя версия", "KupuProxy $DESKTOP_VERSION")
+                        else -> Unit
+                    }
+                }
+            }
+        }
+    }
+
+    // endregion
+
     fun cancelScan() {
         engine.cancel()
         scan = scan.copy(running = false)
@@ -276,6 +498,7 @@ class AppState(
             errorMessage = "MTProto нельзя использовать как туннель — откройте прокси в Telegram"
             return
         }
+        errorMessage = null
         val parsed = ProxyParser.fromUrl(row.url)
         val started = runCatching {
             localProxy.start(
@@ -297,6 +520,7 @@ class AppState(
         lastTrafficTotal = localProxy.snapshot().totalBytes
         updateSettings { it.copy(localProxyEnabled = true) }
         statusMessage = "Локальный прокси: 127.0.0.1:${localProxy.localPort}"
+        notify(Severity.SUCCESS, "Локальный прокси запущен", "127.0.0.1:${localProxy.localPort} → ${row.label}")
     }
 
     /** Вызывается раз в секунду: история — это байты за секунду, а не сырые чанки сокета. */
