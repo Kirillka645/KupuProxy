@@ -48,7 +48,9 @@ compose.desktop {
             // релиза к релизу, иначе установщик .msi не обновит прошлую версию (1.4.0).
             // Полная версия показывается в заголовке окна и в трее (DESKTOP_VERSION).
             packageVersion = providers.gradleProperty("kupuPackageVersion").get()
-            description = "KupuProxy — поиск и проверка Telegram-прокси"
+            // WiX uses an ANSI MSI database by default (LGHT0311 for Cyrillic metadata).
+            // Keep installer metadata ASCII; this does not affect localized application UI.
+            description = "KupuProxy - Telegram proxy discovery and validation"
             vendor = "KupuProxy"
 
             windows {

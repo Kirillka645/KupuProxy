@@ -28,6 +28,13 @@ class DesktopReleaseTest {
     }
 
     @Test
+    fun installerDescriptionFitsWindowsMsiCodepage() {
+        val script = File("build.gradle.kts").readText()
+        val description = Regex("""description = "([^"]+)"""").find(script)!!.groupValues[1]
+        assertTrue(description.all { it.code in 32..126 }, "WiX metadata must be ASCII to avoid LGHT0311")
+    }
+
+    @Test
     fun releaseNotesExistForCurrentVersion() {
         assertTrue(File("../docs/releases/RELEASE_NOTES_$DESKTOP_VERSION.md").isFile, "нет RELEASE_NOTES_$DESKTOP_VERSION.md")
     }
