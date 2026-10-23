@@ -1,0 +1,29 @@
+name: Ошибка / Bug report
+description: Сообщить о проблеме в Android, Desktop или плагине.
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Версия KupuProxy
+      placeholder: 1.4.0.4
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: ОС и версия / платформа
+      placeholder: Android 15 / Windows 11 x64 / Linux Ubuntu 24.04
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Как воспроизвести
+      description: Шаги, ожидаемый результат и что произошло на самом деле.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Логи и скриншоты
+      description: Удалите пароли прокси, токены, секреты MTProto и персональные данные.

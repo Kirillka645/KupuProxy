@@ -26,6 +26,7 @@ kotlin {
         // Снимок встроенных источников (proxy-feeds/) вшивается в ресурсы: клиент работает
         // и без доступа к GitHub. Каталог генерируется задачей bundleStockFeeds.
         desktopMain.resources.srcDir(layout.buildDirectory.dir("generated/stockFeeds"))
+        desktopMain.kotlin.srcDir(layout.buildDirectory.dir("generated/version"))
         val desktopTest by getting
         desktopTest.dependencies {
             implementation(kotlin("test"))
@@ -46,21 +47,26 @@ compose.desktop {
             // упаковывается как 1.4.3 (последняя цифра → BUILD). Номер обязан расти от
             // релиза к релизу, иначе установщик .msi не обновит прошлую версию (1.4.0).
             // Полная версия показывается в заголовке окна и в трее (DESKTOP_VERSION).
-            packageVersion = "1.4.4"
-            description = "KupuProxy — поиск и проверка Telegram-прокси"
+            packageVersion = providers.gradleProperty("kupuPackageVersion").get()
+            // WiX uses an ANSI MSI database by default (LGHT0311 for Cyrillic metadata).
+            // Keep installer metadata ASCII; this does not affect localized application UI.
+            description = "KupuProxy - Telegram proxy discovery and validation"
             vendor = "KupuProxy"
 
             windows {
+                iconFile.set(project.file("src/desktopMain/resources/icon.ico"))
                 menu = true
                 // Portable-сборка: установщик на пользователя, без прав администратора.
                 perUserInstall = true
                 menuGroup = "KupuProxy"
             }
             linux {
+                iconFile.set(project.file("src/desktopMain/resources/icon.png"))
                 menuGroup = "KupuProxy"
                 debMaintainer = "dev@kupuproxy.app"
             }
             macOS {
+                iconFile.set(project.file("src/desktopMain/resources/icon.icns"))
                 bundleID = "app.kupuproxy.desktop"
             }
         }
@@ -99,3 +105,20 @@ val bundleStockFeeds by tasks.registering {
 tasks.matching { it.name == "desktopProcessResources" }.configureEach { dependsOn(bundleStockFeeds) }
 
 // endregion
+
+// Generated constant: the UI, updater and packaged CLI share gradle.properties.
+val generateDesktopVersion by tasks.registering {
+    val version = providers.gradleProperty("kupuVersion")
+    val output = layout.buildDirectory.file("generated/version/com/kupuproxy/desktop/DesktopVersion.kt")
+    inputs.property("version", version)
+    outputs.file(output)
+    doLast {
+        val value = version.get()
+        check(Regex("[0-9]+(\\.[0-9]+){3}").matches(value)) { "Expected a four-part kupuVersion" }
+        output.get().asFile.apply {
+            parentFile.mkdirs()
+            writeText("package com.kupuproxy.desktop\n\nconst val DESKTOP_VERSION = \"$value\"\n")
+        }
+    }
+}
+tasks.matching { it.name == "compileKotlinDesktop" }.configureEach { dependsOn(generateDesktopVersion) }
