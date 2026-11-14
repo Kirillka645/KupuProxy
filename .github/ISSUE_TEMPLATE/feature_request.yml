@@ -1,0 +1,15 @@
+name: Предложение / Feature request
+description: Предложить улучшение с конкретным сценарием использования.
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Какую проблему нужно решить?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Предлагаемое решение и альтернативы
+    validations:
+      required: true

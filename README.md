@@ -1,17 +1,20 @@
 # KupuProxy
 
+![KupuProxy](assets/branding/readme-icon.png)
+
 [![Android CI](https://github.com/Kirillka645/KupuProxy/actions/workflows/android.yml/badge.svg)](https://github.com/Kirillka645/KupuProxy/actions/workflows/android.yml)
+[![Desktop CI](https://github.com/Kirillka645/KupuProxy/actions/workflows/desktop.yml/badge.svg)](https://github.com/Kirillka645/KupuProxy/actions/workflows/desktop.yml)
 [![Latest release](https://img.shields.io/github/v/release/Kirillka645/KupuProxy)](https://github.com/Kirillka645/KupuProxy/releases/latest)
 [![Android](https://img.shields.io/badge/Android-7.0%2B-3DDC84?logo=android&logoColor=white)](https://github.com/Kirillka645/KupuProxy/releases)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-KupuProxy — Android-приложение для поиска, проверки и подключения Telegram MTProto-прокси. Приложение собирает адреса из нескольких публичных источников и самостоятельно подтверждает их работоспособность через MTProto handshake.
+KupuProxy — Android- и Desktop-приложение (Windows, Linux, macOS) для поиска и проверки Telegram-прокси. Общее Kotlin-ядро проверяет MTProto, SOCKS5, HTTP и WEB (HTTP CONNECT поверх TLS); подключение подходящих прокси выполняется через установленный Telegram-клиент.
 
 > Скачать APK: [GitHub Releases](https://github.com/Kirillka645/KupuProxy/releases/latest)
 >
 > Telegram-канал: [@KupuProxy](https://t.me/KupuProxy)
 
-## Возможности 1.4.0.1
+## Возможности
 
 - четыре режима проверки: быстрый, сбалансированный, полный и пользовательский;
 - полный скан до 15 000 уникальных адресов;
@@ -28,7 +31,8 @@ KupuProxy — Android-приложение для поиска, проверки
 - пользовательские HTTPS-источники с защитой от SSRF;
 - проверяемые обновления через GitHub Releases и SHA-256.
 
-В 1.4.0.1 ускорен сбор Telegram-источников: зеркала проверяются параллельно, учитываются только ответы с валидными прокси, а уже полученные результаты не теряются из-за медленного канала. Добавлены отдельные 72-часовые снимки источников, восстановление локальных данных после прерванной записи, полный английский fallback для непереведённых строк и более строгая проверка тега, имени APK, SHA-256 и сертификата обновления.
+Подробные изменения каждой опубликованной версии — в [заметках о релизах](docs/releases/).
+Текущая версия, Android versionCode и версия Desktop-пакета задаются в `gradle.properties`.
 
 ## Как пользоваться
 
@@ -75,12 +79,16 @@ export JAVA_HOME=/path/to/jdk-17
 # Проверки + debug APK
 ./gradlew testDebugUnitTest lintDebug assembleDebug
 
-# Release APK (нужен подписанный ключ в ~/.android/debug.keystore или в secrets CI)
+# Release APK (нужны четыре KUPU_KEYSTORE_*/KUPU_KEY_* переменные; см. инструкцию ниже)
 ./gradlew assembleRelease
 
 # Готовый файл
 # app/build/outputs/apk/release/app-release.apk
 ```
+
+Release-сборка больше не использует debug-ключ по умолчанию. Для обновления уже
+установленных копий нужен **исходный ключ разработчика**, а не новый ключ раннера.
+Переменные окружения, secrets CI и проверка сертификата описаны в [SIGNING.md](docs/releases/SIGNING.md).
 
 ### Desktop (Windows / Linux / macOS)
 
@@ -90,11 +98,11 @@ export JAVA_HOME=/path/to/jdk-17
 # Запускаемый uber-jar для текущей ОС
 ./gradlew :desktop:packageUberJarForCurrentOS
 # desktop/build/compose/jars/KupuProxy-<os>-<version>.jar
-java -jar desktop/build/compose/jars/KupuProxy-windows-x64-1.4.0.jar
+java -jar desktop/build/compose/jars/KupuProxy-windows-x64-1.4.0.4.jar
 
 # Windows: установщик .msi
 ./gradlew :desktop:packageMsi
-# desktop/build/compose/binaries/main/msi/KupuProxy-1.4.0.msi
+# desktop/build/compose/binaries/main/msi/KupuProxy-1.4.4.msi
 
 # Windows: portable-версия без установщика
 ./gradlew :desktop:createDistributable
@@ -102,7 +110,7 @@ java -jar desktop/build/compose/jars/KupuProxy-windows-x64-1.4.0.jar
 
 # Linux: .deb
 ./gradlew :desktop:packageDeb
-# desktop/build/compose/binaries/main/deb/kupuproxy_1.4.3-1_amd64.deb
+# desktop/build/compose/binaries/main/deb/kupuproxy_1.4.4-1_amd64.deb
 
 # Linux: portable .tar.gz (из portable-образа)
 ./gradlew :desktop:createDistributable
@@ -110,11 +118,11 @@ tar -czf KupuProxy-Desktop-linux-x64.tar.gz -C desktop/build/compose/binaries/ma
 
 # macOS: .dmg
 ./gradlew :desktop:packageDmg
-# desktop/build/compose/binaries/main/dmg/KupuProxy-1.4.3.dmg
+# desktop/build/compose/binaries/main/dmg/KupuProxy-1.4.4.dmg
 ```
 
 > `jpackage` требует версию в формате `MAJOR.MINOR.BUILD`, поэтому «маркетинговая» версия
-> `1.4.0.3` упаковывается как `1.4.3` (последняя цифра становится BUILD, чтобы номер рос
+> `1.4.0.4` упаковывается как `1.4.4` (последняя цифра становится BUILD, чтобы номер рос
 > от релиза к релизу). Полная версия показывается в заголовке окна и в трее.
 
 > Сборка `.msi` дополнительно требует **WiX Toolset 3.x** — он нужен `jpackage` на Windows.
@@ -125,8 +133,8 @@ tar -czf KupuProxy-Desktop-linux-x64.tar.gz -C desktop/build/compose/binaries/ma
 Запуск сразу на нужном разделе:
 
 ```bash
-java -jar KupuProxy-Desktop-1.4.0.3.jar --tab=proxies
-java -jar KupuProxy-Desktop-1.4.0.3.jar --tray      # стартовать свёрнутым в трей
+java -jar KupuProxy-Desktop-1.4.0.4.jar --tab=proxies
+java -jar KupuProxy-Desktop-1.4.0.4.jar --tray      # стартовать свёрнутым в трей
 ```
 
 ### Обновление манифеста автообновления
@@ -138,9 +146,26 @@ java -jar KupuProxy-Desktop-1.4.0.3.jar --tray      # стартовать св�
 ./gradlew assembleRelease
 pwsh tools/release/update-manifest.ps1 \
   -ApkPath app/build/outputs/apk/release/app-release.apk \
-  -Version 1.4.0.3 \
+  -Version 1.4.0.4 \
   -Changelog "Краткое описание релиза."
 ```
+
+### Проверки и публикация
+
+```bash
+python3 -m unittest discover -s tools/release/tests -v
+./gradlew :shared:desktopTest :desktop:desktopTest
+# Проверка собранного Linux/Windows portable-образа без GUI
+python3 tools/release/smoke_desktop.py --version 1.4.0.4
+```
+
+Desktop CI и release workflow используют общий `tools/release/stage_desktop.py`.
+MSI, Windows ZIP/JAR, Linux DEB/tar.gz, macOS DMG и подписанный APK обязательны для релиза.
+Workflow проверяет сертификат APK, размер/SHA-256/URL манифеста и создаёт `SHA256SUMS` для всех ассетов.
+Неполный релиз не публикуется. После merge и зелёного CI выпускайте **новый тег**, не заменяйте старый.
+
+Об ошибках сообщайте через [Issues](https://github.com/Kirillka645/KupuProxy/issues/new/choose).
+См. [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md) и [план дальнейших улучшений](docs/IMPROVEMENT_PLAN.md).
 
 ### Основные каталоги
 
@@ -165,8 +190,15 @@ work/       фоновые проверки и обновления
 
 ## English
 
-KupuProxy collects and independently verifies Telegram proxies. Version 1.4.0.3 gives the desktop client built-in proxy sources (the repository's `proxy-feeds/` mirrors with a CDN fallback and an offline snapshot) and fixes the local proxy tunnel, autostart and file picker. Version 1.4.0.2 added a desktop client for Windows, Linux and macOS built on Compose Multiplatform, sharing one Kotlin core with the Android app, and adds SOCKS5, HTTP and WEB proxy support alongside MTProto. Availability checks now run a fast TCP preflight per host before the full protocol handshake, measure jitter across several samples, and colour-code connection quality. The brand palette is unified across both clients.
+KupuProxy collects and independently verifies MTProto, SOCKS5, HTTP and WEB proxies on Android,
+Windows, Linux and macOS. The clients share a Kotlin core; Desktop includes built-in proxy feeds,
+an offline snapshot, tray integration and a local proxy tunnel. See [release notes](docs/releases/)
+for version-specific changes. Version values live in `gradle.properties`.
 
+Build with JDK 17 and Android SDK 35. Release APKs require the original developer signing key
+and a pinned certificate fingerprint; there is no implicit debug-signing fallback.
+See [signing instructions](docs/releases/SIGNING.md). Release publishing requires all platform
+packages and tests to pass; portable packaging is shared with Desktop CI.
 Download the APK from [GitHub Releases](https://github.com/Kirillka645/KupuProxy/releases/latest). No advertising SDKs, analytics, or trackers are included.
 
 ## License

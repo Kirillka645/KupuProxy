@@ -6,6 +6,12 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+// Never fall back to a runner-generated debug key. The existing developer key must
+// be supplied explicitly to preserve update compatibility with installed APKs.
+val releaseKeyNames = listOf("KUPU_KEYSTORE_PATH", "KUPU_KEYSTORE_PASSWORD", "KUPU_KEY_ALIAS", "KUPU_KEY_PASSWORD")
+val releaseKeyValues = releaseKeyNames.associateWith { providers.environmentVariable(it).orNull }
+val hasReleaseKey = releaseKeyValues.values.all { !it.isNullOrBlank() }
+
 android {
     namespace = "com.kupuproxy.app"
     compileSdk = 35
@@ -14,8 +20,8 @@ android {
         applicationId = "com.kupuproxy.app"
         minSdk = 24
         targetSdk = 35
-        versionCode = 24
-        versionName = "1.4.0.4"
+        versionCode = providers.gradleProperty("kupuVersionCode").get().toInt()
+        versionName = providers.gradleProperty("kupuVersion").get()
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -33,11 +39,20 @@ android {
         compose = true
     }
 
+    signingConfigs {
+        create("release") {
+            if (hasReleaseKey) {
+                storeFile = file(releaseKeyValues.getValue("KUPU_KEYSTORE_PATH")!!)
+                storePassword = releaseKeyValues.getValue("KUPU_KEYSTORE_PASSWORD")
+                keyAlias = releaseKeyValues.getValue("KUPU_KEY_ALIAS")
+                keyPassword = releaseKeyValues.getValue("KUPU_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // Existing public builds use this certificate. Changing it without an Android signing
-            // lineage would make in-app updates fail for every installed copy.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -110,3 +125,13 @@ dependencies {
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
 }
+
+// Validate only when release tasks run; debug builds and Desktop tests need no secrets.
+val validateReleaseSigning by tasks.registering {
+    doLast {
+        val missing = releaseKeyNames.filter { releaseKeyValues[it].isNullOrBlank() }
+        check(missing.isEmpty()) { "Release signing requires: ${missing.joinToString()}. See docs/releases/SIGNING.md" }
+        check(file(releaseKeyValues.getValue("KUPU_KEYSTORE_PATH")!!).isFile) { "Release keystore does not exist" }
+    }
+}
+tasks.matching { it.name == "preReleaseBuild" }.configureEach { dependsOn(validateReleaseSigning) }

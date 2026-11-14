@@ -22,15 +22,20 @@ import androidx.compose.ui.window.rememberTrayState
 import androidx.compose.ui.window.rememberWindowState
 import kotlinx.coroutines.delay
 
-/** Версия десктоп-клиента. Держим в одном месте — она же показывается в трее и в окне. */
-const val DESKTOP_VERSION = "1.4.0.4"
-
 /** Мост к системному автозапуску: вынесен, чтобы UI не зависел от платформенного кода. */
 object AutoStartBridge {
     fun set(enabled: Boolean): Boolean = AutoStart.setEnabled(enabled)
 }
 
+/** Headless commands return before Compose, AWT, state or networking is initialized. */
+internal fun commandLineOutput(args: Array<String>): String? = when {
+    "--version" in args -> "KupuProxy $DESKTOP_VERSION"
+    "--help" in args -> "KupuProxy $DESKTOP_VERSION\nUsage: KupuProxy [--version] [--help] [--tray] [--tab=dashboard|proxies|sources|settings]"
+    else -> null
+}
+
 fun main(args: Array<String>) {
+    commandLineOutput(args)?.let { println(it); return }
     val trayOnly = args.contains("--tray") || System.getenv("KUPU_TRAY") == "1"
     // --tab=<раздел> открывает клиент сразу на нужном экране: используется ярлыками и автотестами.
     val initialTab = args.firstOrNull { it.startsWith("--tab=") }

@@ -10,22 +10,40 @@ class DesktopReleaseTest {
 
     @Test
     fun desktopVersionMatchesAndroidVersionName() {
-        val app = File("../app/build.gradle.kts").readText()
-        val versionName = Regex("""versionName = "([^"]+)"""").find(app)!!.groupValues[1]
+        val properties = java.util.Properties().apply {
+            File("../gradle.properties").inputStream().use { load(it) }
+        }
+        val versionName = properties.getProperty("kupuVersion")
         assertEquals(versionName, DESKTOP_VERSION, "DESKTOP_VERSION должен совпадать с versionName (тег релиза)")
     }
 
     @Test
     fun packageVersionIsDerivedFromMarketingVersion() {
-        val script = File("build.gradle.kts").readText()
-        val packageVersion = Regex("""packageVersion = "([^"]+)"""").find(script)!!.groupValues[1]
+        val properties = java.util.Properties().apply {
+            File("../gradle.properties").inputStream().use { load(it) }
+        }
+        val packageVersion = properties.getProperty("kupuPackageVersion")
         val (major, minor, _, build) = DESKTOP_VERSION.split('.').map(String::toInt)
         assertEquals("$major.$minor.$build", packageVersion)
     }
 
     @Test
+    fun installerDescriptionFitsWindowsMsiCodepage() {
+        val script = File("build.gradle.kts").readText()
+        val description = Regex("""description = "([^"]+)"""").find(script)!!.groupValues[1]
+        assertTrue(description.all { it.code in 32..126 }, "WiX metadata must be ASCII to avoid LGHT0311")
+    }
+
+    @Test
     fun releaseNotesExistForCurrentVersion() {
-        assertTrue(File("../RELEASE_NOTES_$DESKTOP_VERSION.md").isFile, "нет RELEASE_NOTES_$DESKTOP_VERSION.md")
+        assertTrue(File("../docs/releases/RELEASE_NOTES_$DESKTOP_VERSION.md").isFile, "нет RELEASE_NOTES_$DESKTOP_VERSION.md")
+    }
+
+    @Test
+    fun supportsHeadlessCommands() {
+        assertEquals("KupuProxy $DESKTOP_VERSION", commandLineOutput(arrayOf("--version")))
+        assertTrue(commandLineOutput(arrayOf("--help"))!!.contains("--tray"))
+        assertEquals(null, commandLineOutput(arrayOf("--tray")))
     }
 
     @Test
