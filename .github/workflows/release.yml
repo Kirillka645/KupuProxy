@@ -1,19 +1,8 @@
 name: Publish release
 
-# Публикует релиз по тегу vX.Y.Z: Android APK + десктопные сборки для трёх платформ.
-#
-# Два ограничения определили устройство workflow:
-#
-# 1. Публичные сборки подписаны ключом разработчика (конфигурация "debug" в app/build.gradle.kts),
-#    а раннер GitHub генерирует собственный debug.keystore. APK, подписанный чужим ключом,
-#    не проходит UpdateArtifactPolicy.hasMatchingSigner, и автообновление ломается у всех,
-#    кто уже установил предыдущую версию. Поэтому ключ передаётся секретом
-#    KUPU_RELEASE_KEYSTORE и подключается через tools/release/ci-signing.gradle.
-#    Если секрет не задан, APK-сборка пропускается, а релиз публикуется без него.
-#
-# 2. Манифест автообновления нельзя заполнить заранее: сборка не воспроизводима побайтово.
-#    SHA-256 известен только после сборки, поэтому манифест пересобирается из готового APK,
-#    сверяется с ним и коммитится обратно в ветку по умолчанию.
+# Release only after Android/shared/Desktop tests and ALL distribution jobs succeed.
+# APK requires the existing developer keystore and a pinned certificate fingerprint.
+# Never silently publish a partial release or sign with a runner-generated key.
 
 on:
   push:
@@ -27,7 +16,7 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -39,11 +28,10 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.check.outputs.version }}
-      # Контекст secrets недоступен в условиях уровня job, поэтому наличие ключа
-      # подписи проверяем здесь, в шаге, и передаём результат через outputs.
-      has_keystore: ${{ steps.keys.outputs.present }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
 
       - name: Тег должен совпадать с versionName
         id: check
@@ -52,45 +40,66 @@ jobs:
         run: |
           set -euo pipefail
           version="${TAG#v}"
-          declared=$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n1)
+          declared=$(sed -n 's/^kupuVersion=//p' gradle.properties)
           if [ "$declared" != "$version" ]; then
-            echo "::error::Тег $TAG не совпадает с versionName \"$declared\" в app/build.gradle.kts"
+            echo "::error::Тег $TAG не совпадает с versionName \"$declared\" в gradle.properties"
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Проверить наличие ключа подписи
-        id: keys
+      - name: Require signing configuration
         env:
           KEYSTORE_B64: ${{ secrets.KUPU_RELEASE_KEYSTORE }}
+          STORE_PASSWORD: ${{ secrets.KUPU_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KUPU_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KUPU_KEY_PASSWORD }}
+          CERT_SHA256: ${{ vars.KUPU_RELEASE_CERT_SHA256 }}
         run: |
           set -euo pipefail
-          if [ -n "${KEYSTORE_B64:-}" ]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-            echo "Ключ подписи задан — APK будет собрана в CI"
-          else
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::KUPU_RELEASE_KEYSTORE не задан: APK собираться не будет, её нужно приложить к релизу вручную"
-          fi
+          for key in KEYSTORE_B64 STORE_PASSWORD KEY_ALIAS KEY_PASSWORD CERT_SHA256; do
+            if [ -z "${!key}" ]; then
+              echo "::error::Missing signing configuration: $key. See docs/releases/SIGNING.md"
+              exit 1
+            fi
+          done
+
+  quality:
+    name: Release tests and lint
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6
+      - name: Test and lint
+        run: |
+          chmod +x ./gradlew
+          python -m unittest discover -s tools/release/tests -v
+          ./gradlew --no-daemon :shared:desktopTest :desktop:desktopTest :app:testDebugUnitTest :app:lintDebug
 
   apk:
     name: Собрать Android APK
-    needs: verify
+    needs: [verify, quality]
     runs-on: ubuntu-latest
-    # Публичные сборки подписаны ключом разработчика. Без секрета шаг пропускается:
-    # APK придётся приложить к готовому релизу вручную.
-    if: ${{ needs.verify.outputs.has_keystore == 'true' }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
 
       - name: Установить JDK 17
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
           java-version: "17"
           cache: gradle
 
-      - uses: gradle/actions/setup-gradle@v6
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6
 
       - name: Восстановить ключ подписи
         env:
@@ -110,13 +119,23 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew --no-daemon \
-            --init-script tools/release/ci-signing.gradle \
-            :app:assembleRelease
+          ./gradlew --no-daemon :app:assembleRelease
           mkdir -p outputs
           apk="outputs/KupuProxy-v${VERSION}.apk"
           cp app/build/outputs/apk/release/app-release.apk "$apk"
           echo "APK_PATH=$apk" >> "$GITHUB_ENV"
+
+      - name: Verify APK certificate
+        env:
+          CERT_SHA256: ${{ vars.KUPU_RELEASE_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          signer=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n1)
+          python tools/release/verify_apk.py --apksigner "$signer" --apk "$APK_PATH" --expected "$CERT_SHA256"
+
+      - name: Remove temporary keystore
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/keys"
 
       - name: Пересобрать манифест автообновления
         env:
@@ -124,7 +143,7 @@ jobs:
           APK_PATH: ${{ env.APK_PATH }}
         run: |
           set -euo pipefail
-          notes="RELEASE_NOTES_${VERSION}.md"
+          notes="docs/releases/RELEASE_NOTES_${VERSION}.md"
           [ -f "$notes" ] || { echo "::error::Нет файла $notes"; exit 1; }
           changelog=$(sed -n '/^## 📦 Сборка/q;p' "$notes" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g' | cut -c1-900)
           pwsh -File tools/release/update-manifest.ps1 \
@@ -142,7 +161,7 @@ jobs:
           echo "Манифест совпадает с APK: $actual"
 
       - name: Приложить ассеты релиза
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: release-apk
           path: |
@@ -153,11 +172,9 @@ jobs:
 
   desktop:
     name: Desktop ${{ matrix.name }}
-    needs: verify
+    needs: [verify, quality]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
-    # Флаг из matrix раньше нигде не применялся, и сбой .msi помечал весь запуск красным.
-    continue-on-error: ${{ matrix.continue-on-error == true }}
     strategy:
       fail-fast: false
       matrix:
@@ -166,9 +183,6 @@ jobs:
             name: windows-msi
             task: :desktop:packageMsi
             ext: msi
-            # Установщик требует WiX, которого на образе может не быть. Отсутствие .msi
-            # не должно блокировать публикацию релиза с остальными файлами.
-            continue-on-error: true
           - os: windows-latest
             name: windows-portable
             task: :desktop:createDistributable
@@ -195,43 +209,23 @@ jobs:
             fmt: jar
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
 
       - name: Установить JDK 17
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
           java-version: "17"
           cache: gradle
 
-      - uses: gradle/actions/setup-gradle@v6
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6
 
-      # jpackage собирает .msi только при наличии WiX Toolset 3.x — на образе его может не быть.
-      - name: Установить WiX для сборки .msi
-        if: endsWith(matrix.name, 'msi')
+      - name: Install WiX 3.x
+        if: matrix.ext == 'msi'
         shell: pwsh
-        run: |
-          if (Get-Command light.exe -ErrorAction SilentlyContinue) {
-            Write-Host "WiX уже доступен"
-            exit 0
-          }
-          $wix = Get-ChildItem "${env:ProgramFiles(x86)}\WiX Toolset*\*\bin\light.exe" -ErrorAction SilentlyContinue
-          if ($wix) {
-            Add-Content -Path $env:GITHUB_PATH -Value (Split-Path -Parent $wix[0].FullName)
-            Write-Host "WiX найден в $(Split-Path -Parent $wix[0].FullName)"
-            exit 0
-          }
-          Write-Host "::group::Устанавливаем WiX Toolset"
-          choco install wixtoolset --yes --no-progress --limit-output
-          choco install wixtoolset --version=3.11.2 --yes --no-progress --limit-output
-          Write-Host "::endgroup::"
-          $after = Get-ChildItem "C:\Program Files (x86)\WiX Toolset*\bin\light.exe" -ErrorAction SilentlyContinue
-          if ($after) {
-            Add-Content -Path $env:GITHUB_PATH -Value (Split-Path -Parent $after[0].FullName)
-            Write-Host "WiX установлен"
-          } else {
-            Write-Host "::warning::WiX установить не удалось — .msi будет пропущен"
-          }
+        run: ./tools/release/setup-wix.ps1
 
       - name: Собрать
         id: build
@@ -242,7 +236,7 @@ jobs:
           # умолчанию windows-1252, где байты кириллицы и тире из --description
           # не определены: jpackage падает с «Input length = 1» ещё до сборки
           # образа приложения. UTF-8 выравнивает обе стороны.
-          JAVA_TOOL_OPTIONS: ${{ runner.os == 'Windows' && '-Dfile.encoding=UTF-8' || '' }}
+          JAVA_TOOL_OPTIONS: "-Dfile.encoding=UTF-8"
         run: |
           set -euo pipefail
           chmod +x ./gradlew
@@ -272,6 +266,13 @@ jobs:
           Write-Host (java -version 2>&1)
           Write-Host ("jdk.jpackage: " + (& "$env:JAVA_HOME\bin\jpackage.exe" --version 2>&1))
 
+      - name: Smoke-test portable launcher
+        if: matrix.fmt == 'zip' || matrix.fmt == 'targz'
+        shell: bash
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: python tools/release/smoke_desktop.py --version "$VERSION"
+
       - name: Собрать ассеты
         shell: bash
         env:
@@ -281,78 +282,19 @@ jobs:
           VERSION: ${{ needs.verify.outputs.version }}
         run: |
           set -euo pipefail
-          mkdir -p staged
-
-          # Portable-образ: Compose создаёт каталог приложения, имя которого
-          # зависит от версии, поэтому ищем его, а не обращаемся по точному пути.
-          # createDistributable пишет образ в binaries/main/app/<packageName>,
-          # то есть каталог лежит на втором уровне, а не на первом.
-          find_appdir() {
-            find desktop/build/compose/binaries/main -maxdepth 2 -type d -name 'KupuProxy*' | head -n1
-          }
-
-          if [ "${FMT:-}" = "jar" ]; then
-            jar=$(find desktop/build/compose/jars -type f -name '*.jar' | head -n1)
-            [ -n "$jar" ] || { echo "::error::Uber-jar не найден"; exit 1; }
-            cp "$jar" "staged/KupuProxy-Desktop-${VERSION}-windows-x64.jar"
-          elif [ "${FMT:-}" = "zip" ]; then
-            appdir=$(find_appdir)
-            [ -n "$appdir" ] || { echo "::error::Каталог portable-сборки не найден"; exit 1; }
-            echo "собираем windows-x64.zip из $appdir"
-            out="KupuProxy-Desktop-${VERSION}-windows-x64.zip"
-            # Архив собирается из родительского каталога, чтобы внутри не было
-            # пути desktop/build/compose/binaries/main/app, и по абсолютному пути,
-            # чтобы смена каталога не влияла на расположение самого архива.
-            parent=$(dirname "$appdir")
-            base=$(basename "$appdir")
-            root=$(pwd)
-            if command -v cygpath >/dev/null 2>&1; then
-              root=$(cygpath -w "$root")
-            fi
-
-            if command -v zip >/dev/null 2>&1; then
-              zip -qr "staged/$out" "$appdir"
-            else
-              # В Git Bash на windows-раннере нет zip. Берём то, что там есть:
-              # 7-Zip из образа, а если его нет — системный bsdtar (libarchive),
-              # который пишет zip по расширению файла.
-              if command -v 7z >/dev/null 2>&1; then
-                seven_zip=7z
-              elif [ -x "/c/Program Files/7-Zip/7z.exe" ]; then
-                seven_zip="/c/Program Files/7-Zip/7z.exe"
-              else
-                seven_zip=""
-              fi
-              if [ -n "$seven_zip" ]; then
-                ( cd "$parent" && "$seven_zip" a -tzip -mx=5 "$root/staged/$out" "$base" >/dev/null )
-              else
-                bsdtar="/c/Windows/System32/tar.exe"
-                [ -x "$bsdtar" ] || { echo "::error::Не найден архиватор zip/7z/bsdtar"; exit 1; }
-                "$bsdtar" -a -c -f "$root/staged/$out" -C "$(cygpath -w "$parent")" "$base"
-              fi
-            fi
-          elif [ "${FMT:-}" = "targz" ]; then
-            appdir=$(find_appdir)
-            [ -n "$appdir" ] || { echo "::error::Каталог portable-сборки не найден"; exit 1; }
-            echo "собираем linux-x64.tar.gz из $appdir"
-            tar -czf "staged/KupuProxy-Desktop-${VERSION}-linux-x64.tar.gz" \
-              -C "$(dirname "$appdir")" "$(basename "$appdir")"
-          else
-            # Ищем строго по своему расширению. Общий поиск по нескольким
-            # расширениям приводил к тому, что задача .tar.gz копировала .deb.
-            file=$(find desktop/build/compose/binaries -type f -name "*.$EXT" | head -n1)
-            if [ -z "$file" ]; then
-              echo "::error::Артефакт .$EXT не найден. Есть:"
-              find desktop/build/compose/binaries -type f | head -n40 || true
-              exit 1
-            fi
-            echo "найден артефакт: $file"
-            cp "$file" staged/
-          fi
-          ls -la staged
+          case "$NAME" in
+            windows-portable) platform=windows-x64 ;;
+            windows-msi) platform=windows-x64 ;;
+            windows-jar) platform=windows-x64 ;;
+            linux-tar|linux-deb) platform=linux-x64 ;;
+            macos-dmg) platform=macos ;;
+            *) echo "::error::Unknown distribution $NAME"; exit 1 ;;
+          esac
+          python tools/release/stage_desktop.py --format "${FMT:-installer}" ${EXT:+--ext "$EXT"} \
+            --name "KupuProxy-Desktop-${VERSION}-${platform}"
 
       - name: Загрузить артефакт
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: release-desktop-${{ matrix.name }}
           path: staged/**
@@ -360,17 +302,18 @@ jobs:
 
   publish:
     name: Опубликовать релиз
-    needs: [verify, desktop, apk]
+    permissions:
+      contents: write
+    needs: [verify, quality, desktop, apk]
     runs-on: ubuntu-latest
-    # apk может быть пропущен (нет ключа подписи), отдельные платформы могут не собраться.
-    # Публикуем то, что собралось; полноту проверяет шаг «Проверить состав» — при слишком
-    # малом числе ассетов релиз не создаётся. Отмену пользователем не переигрываем.
-    if: ${{ !cancelled() && needs.verify.result == 'success' }}
+    # No always()/!cancelled() override: any required job failure blocks publication.
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
 
       - name: Скачать все ассеты
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           path: dist
           pattern: release-*
@@ -380,14 +323,16 @@ jobs:
         run: |
           set -euo pipefail
           find dist -type f -printf '%p (%s байт)\n'
-          count=$(find dist -type f | wc -l)
-          echo "всего файлов: $count"
-          # Минимум — APK-пара или хотя бы две десктопные сборки. Ниже этого релиз
-          # не создаём: пустой или обрезанный релиз хуже, чем явная ошибка.
-          if [ "$count" -lt 2 ]; then
-            echo "::error::Собрано слишком мало ассетов ($count) — публикация отменена"
-            exit 1
-          fi
+          VERSION="${{ needs.verify.outputs.version }}" python tools/release/verify_release.py dist
+          cp dist/update_manifest.json update_manifest.json
+          python - <<'PY_CHECKSUMS'
+          import hashlib
+          from pathlib import Path
+          root = Path('dist')
+          lines = [hashlib.sha256(p.read_bytes()).hexdigest() + '  ' + p.name
+                   for p in sorted(root.iterdir()) if p.is_file() and p.name != 'SHA256SUMS']
+          (root / 'SHA256SUMS').write_text('\n'.join(lines) + '\n')
+          PY_CHECKSUMS
 
       - name: Создать релиз
         env:
@@ -395,7 +340,7 @@ jobs:
           TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
-          notes="RELEASE_NOTES_${TAG#v}.md"
+          notes="docs/releases/RELEASE_NOTES_${TAG#v}.md"
           [ -f "$notes" ] || { echo "::error::Нет файла $notes"; exit 1; }
 
           mapfile -d '' assets < <(find dist -type f -print0)
@@ -428,6 +373,11 @@ jobs:
           cp update_manifest.json "$RUNNER_TEMP/update_manifest.json"
           git fetch --no-tags origin "$branch"
           git checkout -B "$branch" "origin/$branch"
+          declared=$(sed -n 's/^kupuVersion=//p' gradle.properties)
+          if [ "$declared" != "${{ needs.verify.outputs.version }}" ]; then
+            echo "::notice::Default branch version has moved; not overwriting its update manifest"
+            exit 0
+          fi
           cp "$RUNNER_TEMP/update_manifest.json" update_manifest.json
           if git diff --quiet -- update_manifest.json; then
             echo "Манифест в $branch уже актуален"
